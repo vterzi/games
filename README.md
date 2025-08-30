@@ -1,2 +1,2 @@
-# games
-Collection of games in Python
+# Collection of games in Python
+
