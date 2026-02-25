@@ -18,11 +18,12 @@ class ConnectFour:  # TODO generalize
     order: uint[7]
     bottom: ulonglong[7]
     top: ulonglong[7]
-    table: dict[tuple[ulonglong, ulonglong], tuple[cint, cint]] = {}
+    table: ulonglong[8388593]
+    key: ulonglong
 
     def __cinit__(self) -> None:
         col: uint
-        one: ulonglong
+        tmp: ulonglong
 
         if compiled:
             self.order[0] = 3
@@ -32,14 +33,20 @@ class ConnectFour:  # TODO generalize
             self.order[4] = 5
             self.order[5] = 0
             self.order[6] = 6
-            one = 1
+            tmp = 1
+            self.key = 0
             for col in range(7):
-                self.bottom[col] = one << (7 * col)
-                self.top[col] = one << (7 * col + 5)
+                self.bottom[col] = tmp << (7 * col)
+                self.top[col] = tmp << (7 * col + 5)
+                self.key |= self.bottom[col]
+            for col in range(8388593):
+                self.table[col] = 0
         else:
             self.order = (3, 2, 4, 1, 5, 0, 6)
             self.bottom = tuple(1 << (7 * col) for col in range(7))
             self.top = tuple(1 << (7 * col + 5) for col in range(7))
+            self.table = [0] * 8388593
+            self.key = sum(self.bottom)
 
     @cfunc
     @inline
@@ -79,14 +86,29 @@ class ConnectFour:  # TODO generalize
         alpha: cint,
         beta: cint,
     ) -> cint:
-        key = (mask, position)
-        if key in self.table:
-            value, flag = self.table[key]
+        key: ulonglong
+        idx: cint
+        value: cint
+        flag: uint
+        col: uint
+        new_mask: ulonglong
+        new_position: ulonglong
+        alpha_: cint
+        tmp: ulonglong
+
+        key = (self.key + mask) | position
+        idx = key % 8388593
+        tmp = 1
+        if self.table[idx] & ((tmp << 49) - 1) == key:
+            value = ((self.table[idx] >> 49) & ((tmp << 8) - 1)) - 21
+            flag = self.table[idx] >> (49 + 8)
             if flag == 0:
                 return value
-            elif flag == -1 and value >= beta:
-                return value
-            elif flag == 1 and value <= alpha:
+            elif flag == 1 and value >= alpha:
+                alpha = value
+            elif flag == 2 and value <= beta:
+                beta = value
+            if alpha >= beta:
                 return value
         if depth == 0:
             return 0
@@ -95,7 +117,8 @@ class ConnectFour:  # TODO generalize
                 new_mask = self.move(mask, col)
                 if self.win(position | (new_mask ^ mask)):
                     value = (depth + 1) // 2
-                    self.table[key] = (value, 0)
+                    tmp = value + 21
+                    self.table[idx] = key | (tmp << 49)
                     return value
         value = -21
         alpha_ = alpha
@@ -113,12 +136,15 @@ class ConnectFour:  # TODO generalize
                 if alpha >= beta:
                     break
         if value <= alpha_:
-            flag = 1
+            flag = 2
         elif value >= beta:
-            flag = -1
+            flag = 1
         else:
             flag = 0
-        self.table[key] = (value, flag)
+        tmp = flag
+        tmp <<= 8
+        tmp |= value + 21
+        self.table[idx] = key | (tmp << 49)
         return value
 
     @ccall
