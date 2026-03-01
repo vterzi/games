@@ -24,23 +24,25 @@ def bit_count(i: ulonglong):
 
 @cclass
 class ConnectFour:  # TODO generalize
-    rows: uint
-    cols: uint
+    n_rows: uint
+    n_cols: uint
     move_order: uint[7]  # type: ignore
     bottom_cells: ulonglong[7]  # type: ignore
     top_cells: ulonglong[7]  # type: ignore
+    cols: ulonglong[7]  # type: ignore
     bottom_row: ulonglong
     board: ulonglong
     transpos_table: ulonglong[8388593]  # type: ignore
 
     def __cinit__(self) -> None:
         one: ulonglong = 1
-        col: uint
+        i_col: uint
         bottom_cell: ulonglong
         top_cell: ulonglong
+        col: ulonglong
 
-        self.rows = 6
-        self.cols = 7
+        self.n_rows = 6
+        self.n_cols = 7
         if compiled:
             self.move_order[0] = 3  # type: ignore
             self.move_order[1] = 2  # type: ignore
@@ -50,37 +52,45 @@ class ConnectFour:  # TODO generalize
             self.move_order[5] = 0  # type: ignore
             self.move_order[6] = 6  # type: ignore
             self.bottom_row = 0
-            self.board = (one << 49) - 1
-            for col in range(7):
-                bottom_cell = one << (7 * col)
-                top_cell = one << (7 * col + 5)
-                self.bottom_cells[col] = bottom_cell  # type: ignore
-                self.top_cells[col] = top_cell  # type: ignore
+            self.board = 0
+            for i_col in range(7):
+                bottom_cell = one << (7 * i_col)
+                top_cell = one << (7 * i_col + 5)
+                col = (top_cell << 1) - bottom_cell
+                self.bottom_cells[i_col] = bottom_cell  # type: ignore
+                self.top_cells[i_col] = top_cell  # type: ignore
+                self.cols[i_col] = col  # type: ignore
                 self.bottom_row |= bottom_cell
-                self.board ^= top_cell << 1
-            for col in range(8388593):
-                self.transpos_table[col] = 0  # type: ignore
+                self.board |= col
+            for i_col in range(8388593):
+                self.transpos_table[i_col] = 0  # type: ignore
         else:
             self.move_order = (3, 2, 4, 1, 5, 0, 6)  # type: ignore
             self.bottom_cells = tuple(  # type: ignore
-                1 << (7 * col) for col in range(7)
+                1 << (7 * i_col) for i_col in range(7)
             )
             self.top_cells = tuple(  # type: ignore
-                1 << (7 * col + 5) for col in range(7)
+                1 << (7 * i_col + 5) for i_col in range(7)
+            )
+            self.cols = tuple(  # type: ignore
+                (top_cell << 1) - bottom_cell
+                for bottom_cell, top_cell in zip(
+                    self.bottom_cells, self.top_cells
+                )
             )
             self.bottom_row = sum(self.bottom_cells)
-            self.board = ((1 << 49) - 1) ^ (sum(self.top_cells) << 1)
+            self.board = sum(self.cols)
             self.transpos_table = [0] * 8388593  # type: ignore
 
     @cfunc
     @inline
-    def free(self, mask: ulonglong, col: uint) -> bint:
-        return mask & self.top_cells[col] == 0  # type: ignore
+    def free(self, mask: ulonglong, i_col: uint) -> bint:
+        return mask & self.top_cells[i_col] == 0  # type: ignore
 
     @cfunc
     @inline
-    def move(self, mask: ulonglong, col: uint) -> ulonglong:
-        return (mask + self.bottom_cells[col]) | mask  # type: ignore
+    def move(self, mask: ulonglong, i_col: uint) -> ulonglong:
+        return (mask + self.bottom_cells[i_col]) | mask  # type: ignore
 
     @cfunc
     @inline
@@ -102,11 +112,66 @@ class ConnectFour:  # TODO generalize
         return False
 
     @cfunc
+    @inline
+    def possible(self, mask: ulonglong) -> ulonglong:
+        return (mask + self.bottom_row) & self.board
+
+    @cfunc
+    @inline
+    def winning(self, mask: ulonglong, position: ulonglong) -> ulonglong:
+        winning: ulonglong
+        overlap: ulonglong
+
+        winning = (position << 1) & (position << 2) & (position << 3)
+
+        overlap = (position << 7) & (position << 14)
+        winning |= overlap & (position << 21)
+        winning |= overlap & (position >> 7)
+        overlap >>= 21
+        winning |= overlap & (position << 7)
+        winning |= overlap & (position >> 21)
+
+        overlap = (position << 6) & (position << 12)
+        winning |= overlap & (position << 18)
+        winning |= overlap & (position >> 6)
+        overlap >>= 18
+        winning |= overlap & (position << 6)
+        winning |= overlap & (position >> 18)
+
+        overlap = (position << 8) & (position << 16)
+        winning |= overlap & (position << 24)
+        winning |= overlap & (position >> 8)
+        overlap >>= 24
+        winning |= overlap & (position << 8)
+        winning |= overlap & (position >> 24)
+
+        return winning & (self.board ^ mask)
+
+    @cfunc
+    @inline
+    def good(self, mask: ulonglong, position: ulonglong) -> ulonglong:
+        possible: ulonglong
+        losing: ulonglong
+        forced: ulonglong
+        zero: ulonglong
+
+        zero = 0
+        possible = self.possible(mask)
+        losing = self.winning(mask, position ^ mask)
+        forced = possible & losing
+        if forced:
+            if bit_count(forced) > 1:
+                return zero
+            else:
+                possible = forced
+        return possible & ~(losing >> 1)
+
+    @cfunc
     def negamax(
         self,
         mask: ulonglong,
         position: ulonglong,
-        depth: uint,
+        depth: cint,
         alpha: cint,
         beta: cint,
     ) -> cint:
@@ -116,12 +181,27 @@ class ConnectFour:  # TODO generalize
         entry: ulonglong
         value: cint
         flag: uint
-        col: uint
+        i_col: uint
         new_mask: ulonglong
         new_position: ulonglong
         alpha_: cint
 
         one = 1
+        good = self.good(mask, position)
+        if good == 0:
+            return -depth // 2
+        if depth <= 2:
+            return 0
+        min_score = -(depth - 2) // 2
+        if alpha < min_score:
+            alpha = min_score
+            if alpha >= beta:
+                return alpha
+        max_score = (depth - 1) // 2
+        if beta > max_score:
+            beta = max_score
+            if alpha >= beta:
+                return beta
         key = (self.bottom_row + mask) | position
         idx = key % 8388593
         entry = self.transpos_table[idx]  # type: ignore
@@ -136,22 +216,11 @@ class ConnectFour:  # TODO generalize
                 beta = value
             if alpha >= beta:
                 return value
-        if depth == 0:
-            return 0
-        for col in self.move_order:  # type: ignore
-            if self.free(mask, col):
-                new_mask = self.move(mask, col)
-                if self.win(position | (new_mask ^ mask)):
-                    value = (depth + 1) // 2
-                    entry = value + 21
-                    entry = key | (entry << 49)
-                    self.transpos_table[idx] = entry  # type: ignore
-                    return value
         value = -21
         alpha_ = alpha
-        for col in self.move_order:  # type: ignore
-            if self.free(mask, col):
-                new_mask = self.move(mask, col)
+        for i_col in self.move_order:  # type: ignore
+            if good & self.cols[i_col]:  # type: ignore
+                new_mask = self.move(mask, i_col)
                 new_position = position ^ mask
                 value = max(
                     value,
@@ -216,16 +285,16 @@ class ConnectFour:  # TODO generalize
         cell: ulonglong
 
         one = 1
-        stride = self.rows + 1
+        stride = self.n_rows + 1
         string = ""
         color1 = "31"
         color2 = "33"
         if bit_count(mask) % 2 == 1:
             color1, color2 = color2, color1
-        for row in range(self.rows):
+        for row in range(self.n_rows):
             cell = one << row
             line = ""
-            for _ in range(self.cols):
+            for _ in range(self.n_cols):
                 if mask & cell:
                     color = color1 if position & cell else color2
                     disc = f"\x1b[{color}m\u25cf\x1b[0m "  # \u2b24
