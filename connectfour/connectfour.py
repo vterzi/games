@@ -176,8 +176,36 @@ class ConnectFour:  # TODO generalize
         return value
 
     @ccall
-    def solve(self):
-        return self.negamax(0, 0, 42, -21, 21)
+    def solve(
+        self, mask: ulonglong, position: ulonglong, weak: bint = False
+    ) -> cint:
+        depth: cint
+        min_score: cint
+        max_score: cint
+        med_score: cint
+        score: cint
+
+        depth = 42 - bit_count(mask)
+        if weak:
+            min_score = -1
+            max_score = 1
+        else:
+            min_score = -depth // 2
+            max_score = (depth + 1) // 2
+        while min_score < max_score:
+            med_score = min_score + (max_score - min_score) // 2
+            if med_score <= 0:
+                med_score = min(med_score, min_score // 2)
+            elif med_score >= 0:
+                med_score = max(med_score, max_score // 2)
+            score = self.negamax(
+                mask, position, depth, med_score, med_score + 1
+            )
+            if score <= med_score:
+                max_score = score
+            else:
+                min_score = score
+        return min_score
 
     @ccall
     def display(self, mask: ulonglong, position: ulonglong) -> None:
