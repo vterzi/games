@@ -179,7 +179,7 @@ class ConnectFour:  # TODO generalize
         key: ulonglong
         idx: uint
         entry: ulonglong
-        value: cint
+        score: cint
         flag: uint
         i_col: uint
         new_mask: ulonglong
@@ -206,43 +206,43 @@ class ConnectFour:  # TODO generalize
         idx = key % 8388593
         entry = self.transpos_table[idx]  # type: ignore
         if entry & ((one << 49) - 1) == key:
-            value = ((entry >> 49) & ((one << 8) - 1)) - 21
+            score = ((entry >> 49) & ((one << 8) - 1)) - 21
             flag = entry >> (49 + 8)
             if flag == 0:
-                return value
-            elif flag == 1 and value >= alpha:
-                alpha = value
-            elif flag == 2 and value <= beta:
-                beta = value
+                return score
+            elif flag == 1 and score >= alpha:
+                alpha = score
+            elif flag == 2 and score <= beta:
+                beta = score
             if alpha >= beta:
-                return value
-        value = -21
+                return score
+        score = -21
         alpha_ = alpha
         for i_col in self.move_order:  # type: ignore
             if good & self.cols[i_col]:  # type: ignore
                 new_mask = self.move(mask, i_col)
                 new_position = position ^ mask
-                value = max(
-                    value,
+                score = max(
+                    score,
                     -self.negamax(
                         new_mask, new_position, depth - 1, -beta, -alpha
                     ),
                 )
-                alpha = max(alpha, value)
+                alpha = max(alpha, score)
                 if alpha >= beta:
                     break
-        if value <= alpha_:
+        if score <= alpha_:
             flag = 2
-        elif value >= beta:
+        elif score >= beta:
             flag = 1
         else:
             flag = 0
         entry = flag
         entry <<= 8
-        entry |= value + 21
+        entry |= score + 21
         entry = key | (entry << 49)
         self.transpos_table[idx] = entry  # type: ignore
-        return value
+        return score
 
     @ccall
     def solve(
