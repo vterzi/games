@@ -11,10 +11,21 @@ from cython import (  # type: ignore
 )
 
 
+@cfunc
+def bit_count(i: ulonglong):
+    n: uint
+
+    n = 0
+    while i:
+        i &= i - 1
+        n += 1
+    return n
+
+
 @cclass
 class ConnectFour:  # TODO generalize
-    rows: uint = 6
-    cols: uint = 7
+    rows: uint
+    cols: uint
     move_order: uint[7]  # type: ignore
     bottom_cells: ulonglong[7]  # type: ignore
     top_cells: ulonglong[7]  # type: ignore
@@ -28,6 +39,8 @@ class ConnectFour:  # TODO generalize
         bottom_cell: ulonglong
         top_cell: ulonglong
 
+        self.rows = 6
+        self.cols = 7
         if compiled:
             self.move_order[0] = 3  # type: ignore
             self.move_order[1] = 2  # type: ignore
@@ -97,7 +110,7 @@ class ConnectFour:  # TODO generalize
         alpha: cint,
         beta: cint,
     ) -> cint:
-        one: ulonglong = 1
+        one: ulonglong
         key: ulonglong
         idx: uint
         entry: ulonglong
@@ -108,6 +121,7 @@ class ConnectFour:  # TODO generalize
         new_position: ulonglong
         alpha_: cint
 
+        one = 1
         key = (self.bottom_row + mask) | position
         idx = key % 8388593
         entry = self.transpos_table[idx]  # type: ignore
@@ -165,22 +179,31 @@ class ConnectFour:  # TODO generalize
     def solve(self):
         return self.negamax(0, 0, 42, -21, 21)
 
-    # @ccall
-    # def display(self, mask: ulonglong, position: ulonglong) -> None:
-    #     rows = self.rows
-    #     cols = self.cols
-    #     stride = rows + 1
-    #     string = ""
-    #     for row in range(rows):
-    #         i = 1 << row
-    #         line = ""
-    #         for _ in range(cols):
-    #             if mask & i:
-    #                 color = "31" if position & i else "33"
-    #                 disc = f"\x1b[{color}m\u25cf\x1b[0m "  # \u2b24
-    #             else:
-    #                 disc = "\u25cb "  # \u25ef
-    #             line += disc
-    #             i <<= stride
-    #         string = line[:-1] + "\n" + string
-    #     print(string[:-1])
+    @ccall
+    def display(self, mask: ulonglong, position: ulonglong) -> None:
+        one: ulonglong
+        stride: uint
+        row: uint
+        _: uint
+        cell: ulonglong
+
+        one = 1
+        stride = self.rows + 1
+        string = ""
+        color1 = "31"
+        color2 = "33"
+        if bit_count(mask) % 2 == 1:
+            color1, color2 = color2, color1
+        for row in range(self.rows):
+            cell = one << row
+            line = ""
+            for _ in range(self.cols):
+                if mask & cell:
+                    color = color1 if position & cell else color2
+                    disc = f"\x1b[{color}m\u25cf\x1b[0m "  # \u2b24
+                else:
+                    disc = "\u25cb "  # \u25ef
+                line += disc
+                cell <<= stride
+            string = line[: len(line) - 1] + "\n" + string
+        print(string[: len(string) - 1])
