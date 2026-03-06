@@ -26,12 +26,12 @@ def bit_count(i: ulonglong) -> uint:
 class ConnectFour:
     n_rows: uint
     n_cols: uint
-    move_order: uint[7]  # type: ignore
     bottom_cells: ulonglong[7]  # type: ignore
     top_cells: ulonglong[7]  # type: ignore
     cols: ulonglong[7]  # type: ignore
     bottom_row: ulonglong
     board: ulonglong
+    move_order: uint[7]  # type: ignore
     transpos_table: ulonglong[8388593]  # type: ignore
 
     def __cinit__(self) -> None:
@@ -47,9 +47,6 @@ class ConnectFour:
             self.bottom_row = 0
             self.board = 0
             for i_col in range(7):
-                self.move_order[i_col] = (  # type: ignore
-                    self.n_cols // 2 + (1 - 2 * (i_col % 2)) * (i_col + 1) // 2
-                )
                 bottom_cell = one << (7 * i_col)
                 top_cell = one << (7 * i_col + 5)
                 col = (top_cell << 1) - bottom_cell
@@ -58,13 +55,12 @@ class ConnectFour:
                 self.cols[i_col] = col  # type: ignore
                 self.bottom_row |= bottom_cell
                 self.board |= col
+                self.move_order[i_col] = (  # type: ignore
+                    self.n_cols // 2 + (1 - 2 * (i_col % 2)) * (i_col + 1) // 2
+                )
             for i_col in range(8388593):
                 self.transpos_table[i_col] = 0  # type: ignore
         else:
-            self.move_order = tuple(  # type: ignore
-                self.n_cols // 2 + (1 - 2 * (i_col % 2)) * (i_col + 1) // 2
-                for i_col in range(7)
-            )
             self.bottom_cells = tuple(  # type: ignore
                 1 << (7 * i_col) for i_col in range(7)
             )
@@ -79,6 +75,10 @@ class ConnectFour:
             )
             self.bottom_row = sum(self.bottom_cells)
             self.board = sum(self.cols)
+            self.move_order = tuple(  # type: ignore
+                self.n_cols // 2 + (1 - 2 * (i_col % 2)) * (i_col + 1) // 2
+                for i_col in range(7)
+            )
             self.transpos_table = [0] * 8388593  # type: ignore
 
     @cfunc
