@@ -166,6 +166,11 @@ class ConnectFour:
         return possible & ~(losing >> 1)
 
     @cfunc
+    @inline
+    def score(self, occupied: ulonglong, position: ulonglong) -> uint:
+        return bit_count(self.winning(occupied, position))
+
+    @cfunc
     def negamax(
         self,
         mask: ulonglong,
