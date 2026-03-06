@@ -83,13 +83,13 @@ class ConnectFour:
 
     @cfunc
     @inline
-    def free(self, mask: ulonglong, i_col: uint) -> bint:
-        return mask & self.top_cells[i_col] == 0  # type: ignore
+    def free(self, occupied: ulonglong, i_col: uint) -> bint:
+        return occupied & self.top_cells[i_col] == 0  # type: ignore
 
     @cfunc
     @inline
-    def move(self, mask: ulonglong, i_col: uint) -> ulonglong:
-        return (mask + self.bottom_cells[i_col]) | mask  # type: ignore
+    def move(self, occupied: ulonglong, i_col: uint) -> ulonglong:
+        return (occupied + self.bottom_cells[i_col]) | occupied  # type: ignore
 
     @cfunc
     @inline
@@ -112,12 +112,12 @@ class ConnectFour:
 
     @cfunc
     @inline
-    def possible(self, mask: ulonglong) -> ulonglong:
-        return (mask + self.bottom_row) & self.board
+    def possible(self, occupied: ulonglong) -> ulonglong:
+        return (occupied + self.bottom_row) & self.board
 
     @cfunc
     @inline
-    def winning(self, mask: ulonglong, position: ulonglong) -> ulonglong:
+    def winning(self, occupied: ulonglong, position: ulonglong) -> ulonglong:
         winning: ulonglong
         overlap: ulonglong
 
@@ -144,19 +144,19 @@ class ConnectFour:
         winning |= overlap & (position << 8)
         winning |= overlap & (position >> 24)
 
-        return winning & (self.board ^ mask)
+        return winning & (self.board ^ occupied)
 
     @cfunc
     @inline
-    def good(self, mask: ulonglong, position: ulonglong) -> ulonglong:
+    def good(self, occupied: ulonglong, position: ulonglong) -> ulonglong:
         possible: ulonglong
         losing: ulonglong
         forced: ulonglong
         zero: ulonglong
 
         zero = 0
-        possible = self.possible(mask)
-        losing = self.winning(mask, position ^ mask)
+        possible = self.possible(occupied)
+        losing = self.winning(occupied, position ^ occupied)
         forced = possible & losing
         if forced:
             if bit_count(forced) > 1:
@@ -245,7 +245,7 @@ class ConnectFour:
 
     @ccall
     def solve(
-        self, mask: ulonglong, position: ulonglong, weak: bint = False
+        self, occupied: ulonglong, position: ulonglong, weak: bint = False
     ) -> cint:
         depth: cint
         min_score: cint
@@ -253,7 +253,7 @@ class ConnectFour:
         med_score: cint
         score: cint
 
-        depth = 42 - bit_count(mask)
+        depth = 42 - bit_count(occupied)
         if weak:
             min_score = -1
             max_score = 1
@@ -267,7 +267,7 @@ class ConnectFour:
             elif med_score >= 0:
                 med_score = max(med_score, max_score // 2)
             score = self.negamax(
-                mask, position, depth, med_score, med_score + 1
+                occupied, position, depth, med_score, med_score + 1
             )
             if score <= med_score:
                 max_score = score
@@ -276,7 +276,7 @@ class ConnectFour:
         return min_score
 
     @ccall
-    def display(self, mask: ulonglong, position: ulonglong) -> None:
+    def display(self, occupied: ulonglong, position: ulonglong) -> None:
         one: ulonglong
         stride: uint
         row: uint
@@ -288,13 +288,13 @@ class ConnectFour:
         string = ""
         color1 = "31"
         color2 = "33"
-        if bit_count(mask) % 2 == 1:
+        if bit_count(occupied) % 2 == 1:
             color1, color2 = color2, color1
         for row in range(self.n_rows):
             cell = one << row
             line = ""
             for _ in range(self.n_cols):
-                if mask & cell:
+                if occupied & cell:
                     color = color1 if position & cell else color2
                     disc = f"\x1b[{color}m\u25cf\x1b[0m "  # \u2b24
                 else:
