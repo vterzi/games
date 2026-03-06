@@ -12,7 +12,7 @@ from cython import (  # type: ignore
 
 
 @cfunc
-def bit_count(i: ulonglong):
+def bit_count(i: ulonglong) -> uint:
     n: uint
 
     n = 0
@@ -23,7 +23,7 @@ def bit_count(i: ulonglong):
 
 
 @cclass
-class ConnectFour:  # TODO generalize
+class ConnectFour:
     n_rows: uint
     n_cols: uint
     move_order: uint[7]  # type: ignore
@@ -44,16 +44,12 @@ class ConnectFour:  # TODO generalize
         self.n_rows = 6
         self.n_cols = 7
         if compiled:
-            self.move_order[0] = 3  # type: ignore
-            self.move_order[1] = 2  # type: ignore
-            self.move_order[2] = 4  # type: ignore
-            self.move_order[3] = 1  # type: ignore
-            self.move_order[4] = 5  # type: ignore
-            self.move_order[5] = 0  # type: ignore
-            self.move_order[6] = 6  # type: ignore
             self.bottom_row = 0
             self.board = 0
             for i_col in range(7):
+                self.move_order[i_col] = (  # type: ignore
+                    self.n_cols // 2 + (1 - 2 * (i_col % 2)) * (i_col + 1) // 2
+                )
                 bottom_cell = one << (7 * i_col)
                 top_cell = one << (7 * i_col + 5)
                 col = (top_cell << 1) - bottom_cell
@@ -65,7 +61,10 @@ class ConnectFour:  # TODO generalize
             for i_col in range(8388593):
                 self.transpos_table[i_col] = 0  # type: ignore
         else:
-            self.move_order = (3, 2, 4, 1, 5, 0, 6)  # type: ignore
+            self.move_order = tuple(  # type: ignore
+                self.n_cols // 2 + (1 - 2 * (i_col % 2)) * (i_col + 1) // 2
+                for i_col in range(7)
+            )
             self.bottom_cells = tuple(  # type: ignore
                 1 << (7 * i_col) for i_col in range(7)
             )
