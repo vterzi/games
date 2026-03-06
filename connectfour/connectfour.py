@@ -244,6 +244,32 @@ class ConnectFour:
         return score
 
     @ccall
+    def play(self, moves: str) -> tuple[ulonglong, ulonglong]:
+        occupied: ulonglong
+        position: ulonglong
+        i_col: uint
+        mod_occupied: ulonglong
+
+        occupied = 0
+        position = 0
+        for move in moves:
+            i_col = ord(move) - ord("1")
+            if (
+                i_col < 0
+                or i_col >= self.n_cols
+                or not self.free(occupied, i_col)
+            ):
+                break
+            mod_occupied = occupied + self.bottom_cells[i_col]  # type: ignore
+            if self.win(
+                position | (mod_occupied & self.cols[i_col])  # type: ignore
+            ):
+                break
+            position ^= occupied
+            occupied |= mod_occupied
+        return occupied, position
+
+    @ccall
     def solve(
         self, occupied: ulonglong, position: ulonglong, weak: bint = False
     ) -> cint:
