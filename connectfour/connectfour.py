@@ -33,6 +33,8 @@ def bit_count(i: ulonglong) -> uint:
 class ConnectFour:
     n_rows: uint
     n_cols: uint
+    min_score: cint
+    max_score: cint
     bottom_cells: ulonglong[7]  # type: ignore
     top_cells: ulonglong[7]  # type: ignore
     cols: ulonglong[7]  # type: ignore
@@ -73,7 +75,8 @@ class ConnectFour:
                     self.n_cols // 2 + (1 - 2 * (i_col % 2)) * (i_col + 1) // 2
                 )
             for i_col in range(8388593):
-                self.transpos_table[i_col] = 0  # type: ignore
+                self.transpos_tab_keys[i_col] = 0  # type: ignore
+                self.transpos_tab_vals[i_col] = 0  # type: ignore
         else:
             self.bottom_cells = tuple(  # type: ignore
                 1 << (7 * i_col) for i_col in range(7)
@@ -93,7 +96,8 @@ class ConnectFour:
                 self.n_cols // 2 + (1 - 2 * (i_col % 2)) * (i_col + 1) // 2
                 for i_col in range(7)
             )
-            self.transpos_table = [0] * 8388593  # type: ignore
+            self.transpos_tab_keys = [0] * 8388593  # type: ignore
+            self.transpos_tab_vals = [0] * 8388593  # type: ignore
 
     @cfunc
     @inline
