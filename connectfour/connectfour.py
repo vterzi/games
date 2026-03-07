@@ -282,30 +282,38 @@ class ConnectFour:
         return score
 
     @ccall
-    def play(self, moves: str) -> tuple[ulonglong, ulonglong]:
-        occupied: ulonglong
-        position: ulonglong
-        i_col: uint
-        mod_occupied: ulonglong
+    def solve(
+        self, occupied: ulonglong, position: ulonglong, weak: bint = False
+    ) -> cint:
+        depth: cint
+        min_score: cint
+        max_score: cint
+        med_score: cint
+        score: cint
 
-        occupied = 0
-        position = 0
-        for move in moves:
-            i_col = ord(move) - ord("1")
-            if (
-                i_col < 0
-                or i_col >= self.n_cols
-                or not self.free(occupied, i_col)
-            ):
-                break
-            mod_occupied = occupied + self.bottom_cells[i_col]  # type: ignore
-            if self.win(
-                position | (mod_occupied & self.cols[i_col])  # type: ignore
-            ):
-                break
-            position ^= occupied
-            occupied |= mod_occupied
-        return occupied, position
+        depth = 42 - bit_count(occupied)
+        if self.possible(occupied) & self.winning(occupied, position) > 0:
+            return (depth + 1) // 2
+        if weak:
+            min_score = -1
+            max_score = 1
+        else:
+            min_score = -depth // 2
+            max_score = (depth + 1) // 2
+        while min_score < max_score:
+            med_score = min_score + (max_score - min_score) // 2
+            if med_score <= 0:
+                med_score = min(med_score, min_score // 2)
+            elif med_score >= 0:
+                med_score = max(med_score, max_score // 2)
+            score = self.negamax(
+                occupied, position, depth, med_score, med_score + 1
+            )
+            if score <= med_score:
+                max_score = score
+            else:
+                min_score = score
+        return min_score
 
     @ccall
     def analyze(
@@ -339,38 +347,30 @@ class ConnectFour:
         return tuple(scores)
 
     @ccall
-    def solve(
-        self, occupied: ulonglong, position: ulonglong, weak: bint = False
-    ) -> cint:
-        depth: cint
-        min_score: cint
-        max_score: cint
-        med_score: cint
-        score: cint
+    def play(self, moves: str) -> tuple[ulonglong, ulonglong]:
+        occupied: ulonglong
+        position: ulonglong
+        i_col: uint
+        mod_occupied: ulonglong
 
-        depth = 42 - bit_count(occupied)
-        if self.possible(occupied) & self.winning(occupied, position) > 0:
-            return (depth + 1) // 2
-        if weak:
-            min_score = -1
-            max_score = 1
-        else:
-            min_score = -depth // 2
-            max_score = (depth + 1) // 2
-        while min_score < max_score:
-            med_score = min_score + (max_score - min_score) // 2
-            if med_score <= 0:
-                med_score = min(med_score, min_score // 2)
-            elif med_score >= 0:
-                med_score = max(med_score, max_score // 2)
-            score = self.negamax(
-                occupied, position, depth, med_score, med_score + 1
-            )
-            if score <= med_score:
-                max_score = score
-            else:
-                min_score = score
-        return min_score
+        occupied = 0
+        position = 0
+        for move in moves:
+            i_col = ord(move) - ord("1")
+            if (
+                i_col < 0
+                or i_col >= self.n_cols
+                or not self.free(occupied, i_col)
+            ):
+                break
+            mod_occupied = occupied + self.bottom_cells[i_col]  # type: ignore
+            if self.win(
+                position | (mod_occupied & self.cols[i_col])  # type: ignore
+            ):
+                break
+            position ^= occupied
+            occupied |= mod_occupied
+        return occupied, position
 
     @ccall
     def display(self, occupied: ulonglong, position: ulonglong) -> None:
