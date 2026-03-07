@@ -308,6 +308,37 @@ class ConnectFour:
         return occupied, position
 
     @ccall
+    def analyze(
+        self,
+        occupied: ulonglong,
+        position: ulonglong,
+        weak: bint = False,
+    ) -> tuple[cint, ...]:
+        new_occupied: ulonglong
+        new_position: ulonglong
+        i_col: uint
+        score: cint
+        scores: list[cint]
+
+        scores = [-self.min_score - 1] * 7
+        new_position = position ^ occupied
+        for i_col in range(7):
+            if self.free(occupied, i_col):
+                mod_occupied = (
+                    occupied + self.bottom_cells[i_col]  # type: ignore
+                )
+                if self.win(
+                    position
+                    | (mod_occupied & self.cols[i_col])  # type: ignore
+                ):
+                    score = (43 - bit_count(occupied)) // 2
+                else:
+                    new_occupied = self.move(occupied, i_col)
+                    score = -self.solve(new_occupied, new_position, weak)
+                scores[i_col] = score
+        return tuple(scores)
+
+    @ccall
     def solve(
         self, occupied: ulonglong, position: ulonglong, weak: bint = False
     ) -> cint:
