@@ -1,3 +1,5 @@
+# https://github.com/PascalPons/connect4
+
 from cython import (  # type: ignore
     compiled,
     bint,
@@ -8,6 +10,11 @@ from cython import (  # type: ignore
     inline,
     ccall,
     cclass,
+    cast,
+)
+from cython.cimports.libc.stdint import (  # type: ignore
+    uint8_t,
+    uint32_t,
 )
 
 
@@ -32,7 +39,8 @@ class ConnectFour:
     bottom_row: ulonglong
     board: ulonglong
     move_order: uint[7]  # type: ignore
-    transpos_table: ulonglong[8388593]  # type: ignore
+    transpos_tab_keys: uint32_t[8388617]  # type: ignore
+    transpos_tab_vals: uint8_t[8388617]  # type: ignore
 
     def __cinit__(self) -> None:
         one: ulonglong = 1
@@ -43,6 +51,12 @@ class ConnectFour:
 
         self.n_rows = 6
         self.n_cols = 7
+        if self.n_cols > 9:
+            raise ValueError("board wider than 9 columns")
+        if (self.n_rows + 1) * self.n_cols > 64:
+            raise ValueError("board too large")
+        self.min_score = -(self.n_rows * self.n_cols) // 2 + 3
+        self.max_score = (self.n_rows * self.n_cols + 1) // 2 - 3
         if compiled:
             self.bottom_row = 0
             self.board = 0
@@ -173,25 +187,28 @@ class ConnectFour:
     @cfunc
     def negamax(
         self,
-        mask: ulonglong,
+        occupied: ulonglong,
         position: ulonglong,
         depth: cint,
         alpha: cint,
         beta: cint,
     ) -> cint:
-        one: ulonglong
-        key: ulonglong
+        key: uint32_t
         idx: uint
-        entry: ulonglong
         score: cint
-        flag: uint
         i_col: uint
-        new_mask: ulonglong
+        moves: ulonglong[7]  # type: ignore
+        scores: cint[7]  # type: ignore
+        n_moves: uint
+        i_move: uint
+        new_occupied: ulonglong
         new_position: ulonglong
-        alpha_: cint
 
-        one = 1
-        good = self.good(mask, position)
+        if not compiled:
+            moves = [0] * 7  # type: ignore
+            scores = [0] * 7  # type: ignore
+
+        good = self.good(occupied, position)
         if good == 0:
             return -depth // 2
         if depth <= 2:
@@ -206,46 +223,62 @@ class ConnectFour:
             beta = max_score
             if alpha >= beta:
                 return beta
-        key = (self.bottom_row + mask) | position
-        idx = key % 8388593
-        entry = self.transpos_table[idx]  # type: ignore
-        if entry & ((one << 49) - 1) == key:
-            score = ((entry >> 49) & ((one << 8) - 1)) - 21
-            flag = entry >> (49 + 8)
-            if flag == 0:
-                return score
-            elif flag == 1 and score >= alpha:
-                alpha = score
-            elif flag == 2 and score <= beta:
-                beta = score
-            if alpha >= beta:
-                return score
-        score = -21
-        alpha_ = alpha
+        # key = (self.bottom_row + occupied) | position
+        key = occupied + position
+        idx = key % 8388617
+        if key == self.transpos_tab_keys[idx]:  # type: ignore
+            score = cast(cint, self.transpos_tab_vals[idx])  # type: ignore
+            if score > self.max_score - self.min_score + 1:
+                min_score = score + 2 * self.min_score - self.max_score - 2
+                if alpha < min_score:
+                    alpha = min_score
+                    if alpha >= beta:
+                        return alpha
+            else:
+                max_score = score + self.min_score - 1
+                if beta > max_score:
+                    beta = max_score
+                    if alpha >= beta:
+                        return beta
+
+        n_moves = 0
         for i_col in self.move_order:  # type: ignore
-            if good & self.cols[i_col]:  # type: ignore
-                new_mask = self.move(mask, i_col)
-                new_position = position ^ mask
-                score = max(
-                    score,
-                    -self.negamax(
-                        new_mask, new_position, depth - 1, -beta, -alpha
-                    ),
+            move = good & self.cols[i_col]  # type: ignore
+            if move:
+                score = self.score(occupied | move, position | move)
+                i_move = n_moves
+                n_moves += 1
+                while (
+                    i_move > 0 and scores[i_move - 1] < score  # type: ignore
+                ):
+                    moves[i_move] = moves[i_move - 1]  # type: ignore
+                    scores[i_move] = scores[i_move - 1]  # type: ignore
+                    i_move -= 1
+                moves[i_move] = move  # type: ignore
+                scores[i_move] = score  # type: ignore
+
+        score = -self.min_score
+        new_position = position ^ occupied
+        for i_move in range(n_moves):
+            new_occupied = occupied | moves[i_move]  # type: ignore
+            score = max(
+                score,
+                -self.negamax(
+                    new_occupied, new_position, depth - 1, -beta, -alpha
+                ),
+            )
+            if score >= beta:
+                self.transpos_tab_keys[idx] = key  # type: ignore
+                self.transpos_tab_vals[idx] = cast(  # type: ignore
+                    uint8_t, score + self.max_score - 2 * self.min_score + 2
                 )
-                alpha = max(alpha, score)
-                if alpha >= beta:
-                    break
-        if score <= alpha_:
-            flag = 2
-        elif score >= beta:
-            flag = 1
-        else:
-            flag = 0
-        entry = flag
-        entry <<= 8
-        entry |= score + 21
-        entry = key | (entry << 49)
-        self.transpos_table[idx] = entry  # type: ignore
+                return score
+            if score > alpha:
+                alpha = score
+        self.transpos_tab_keys[idx] = key  # type: ignore
+        self.transpos_tab_vals[idx] = cast(  # type: ignore
+            uint8_t, alpha - self.min_score + 1
+        )
         return score
 
     @ccall
@@ -285,6 +318,8 @@ class ConnectFour:
         score: cint
 
         depth = 42 - bit_count(occupied)
+        if self.possible(occupied) & self.winning(occupied, position) > 0:
+            return (depth + 1) // 2
         if weak:
             min_score = -1
             max_score = 1
