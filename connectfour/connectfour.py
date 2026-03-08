@@ -48,20 +48,24 @@ def bit_count(i: uint64_t) -> cint:
 class ConnectFour:  # https://github.com/PascalPons/connect4
     n_rows: cint
     n_cols: cint
-    min_score: cint
-    max_score: cint
     bottom_cells: uint64_t[7]
     top_cells: uint64_t[7]
     cols: uint64_t[7]
     bottom_row: uint64_t
     board: uint64_t
     move_order: cint[7]  # type: ignore
-    transpos_tab_keys: uint32_t[8388617]
-    transpos_tab_vals: uint8_t[8388617]
+    transpos_tab_size: cint
+    transpos_tab_keys: uint32_t[(1 << 23) + 9]
+    transpos_tab_vals: uint8_t[(1 << 23) + 9]
+    n_cells: cint
+    stride: cint
+    min_score: cint
+    max_score: cint
+    invalid_score: cint
+    score_shift: cint
 
     def __cinit__(self) -> None:
         one: uint64_t
-        n_cells: cint
         i_col: cint
         bottom_cell: uint64_t
         top_cell: uint64_t
@@ -70,50 +74,45 @@ class ConnectFour:  # https://github.com/PascalPons/connect4
         one = 1
         self.n_rows = 6
         self.n_cols = 7
+        self.transpos_tab_size = (1 << 23) + 9
+        self.n_rows = max(self.n_rows, 0)
+        self.n_cols = max(self.n_cols, 0)
+        self.transpos_tab_size = max(self.transpos_tab_size, 0)
+        self.n_cells = self.n_rows * self.n_cols
+        self.stride = self.n_rows + 1
         if self.n_cols > 9:
             raise ValueError("board wider than 9 columns")
-        if (self.n_rows + 1) * self.n_cols > 64:
+        if self.n_cells + self.n_cols > 64:
             raise ValueError("board too large")
-        n_cells = self.n_rows * self.n_cols
-        self.min_score = -cdiv(n_cells, 2) + 3
-        self.max_score = cdiv(n_cells + 1, 2) - 3
-        if compiled:
-            self.bottom_row = 0
-            self.board = 0
-            for i_col in range(7):
-                bottom_cell = one << (7 * i_col)
-                top_cell = one << (7 * i_col + 5)
-                col = (top_cell << 1) - bottom_cell
-                self.bottom_cells[i_col] = bottom_cell
-                self.top_cells[i_col] = top_cell
-                self.cols[i_col] = col
-                self.bottom_row |= bottom_cell
-                self.board |= col
-                self.move_order[i_col] = (  # type: ignore
-                    cdiv(self.n_cols, 2)
-                    + cdiv((1 - 2 * (i_col % 2)) * (i_col + 1), 2)
-                )
-            for i_col in range(8388617):
-                self.transpos_tab_keys[i_col] = 0
-                self.transpos_tab_vals[i_col] = 0
-        else:
-            self.bottom_cells = tuple(1 << (7 * i_col) for i_col in range(7))
-            self.top_cells = tuple(1 << (7 * i_col + 5) for i_col in range(7))
-            self.cols = tuple(
-                (top_cell << 1) - bottom_cell
-                for bottom_cell, top_cell in zip(
-                    self.bottom_cells, self.top_cells
-                )
-            )
-            self.bottom_row = sum(self.bottom_cells)
-            self.board = sum(self.cols)
-            self.move_order = tuple(  # type: ignore
+        self.min_score = -cdiv(self.n_cells, 2) + 3
+        self.max_score = cdiv(self.n_cells + 1, 2) - 3
+        self.invalid_score = self.min_score - 1
+        self.score_shift = self.max_score - self.invalid_score
+        if not compiled:
+            self.bottom_cells = [0] * self.n_cols
+            self.top_cells = [0] * self.n_cols
+            self.cols = [0] * self.n_cols
+            self.move_order = [0] * self.n_cols  # type: ignore
+            self.transpos_tab_keys = [0] * self.transpos_tab_size
+            self.transpos_tab_vals = [0] * self.transpos_tab_size
+        self.bottom_row = 0
+        self.board = 0
+        for i_col in range(self.n_cols):
+            bottom_cell = one << (self.stride * i_col)
+            top_cell = one << (self.stride * (i_col + 1) - 2)
+            col = (top_cell << 1) - bottom_cell
+            self.bottom_cells[i_col] = bottom_cell
+            self.top_cells[i_col] = top_cell
+            self.cols[i_col] = col
+            self.bottom_row |= bottom_cell
+            self.board |= col
+            self.move_order[i_col] = (  # type: ignore
                 cdiv(self.n_cols, 2)
                 + cdiv((1 - 2 * (i_col % 2)) * (i_col + 1), 2)
-                for i_col in range(7)
             )
-            self.transpos_tab_keys = [0] * 8388617
-            self.transpos_tab_vals = [0] * 8388617
+        for i_col in range(self.transpos_tab_size):
+            self.transpos_tab_keys[i_col] = 0
+            self.transpos_tab_vals[i_col] = 0
 
     @cfunc
     @inline
@@ -124,26 +123,25 @@ class ConnectFour:  # https://github.com/PascalPons/connect4
     @cfunc
     @inline
     @exceptval(check=False)  # type: ignore
-    def move(self, occupied: uint64_t, i_col: cint) -> uint64_t:
-        return (occupied + self.bottom_cells[i_col]) | occupied
-
-    @cfunc
-    @inline
-    @exceptval(check=False)  # type: ignore
     def win(self, position: uint64_t) -> bint:
+        stride: cint
         overlap: uint64_t
 
-        overlap = position & (position >> 1)
-        if overlap & (overlap >> 2):
+        stride = 1
+        overlap = position & (position >> stride)
+        if overlap & (overlap >> (stride << 1)):
             return True
-        overlap = position & (position >> 7)
-        if overlap & (overlap >> 14):
+        stride = self.stride
+        overlap = position & (position >> stride)
+        if overlap & (overlap >> (stride << 1)):
             return True
-        overlap = position & (position >> 6)
-        if overlap & (overlap >> 12):
+        stride = self.stride - 1
+        overlap = position & (position >> stride)
+        if overlap & (overlap >> (stride << 1)):
             return True
-        overlap = position & (position >> 8)
-        if overlap & (overlap >> 16):
+        stride = self.stride + 1
+        overlap = position & (position >> stride)
+        if overlap & (overlap >> (stride << 1)):
             return True
         return False
 
@@ -157,31 +155,43 @@ class ConnectFour:  # https://github.com/PascalPons/connect4
     @inline
     @exceptval(check=False)  # type: ignore
     def winning(self, occupied: uint64_t, position: uint64_t) -> uint64_t:
-        winning: uint64_t
+        stride1: cint
+        stride2: cint
+        stride3: cint
         overlap: uint64_t
+        winning: uint64_t
 
         winning = (position << 1) & (position << 2) & (position << 3)
 
-        overlap = (position << 7) & (position << 14)
-        winning |= overlap & (position << 21)
-        winning |= overlap & (position >> 7)
-        overlap >>= 21
-        winning |= overlap & (position << 7)
-        winning |= overlap & (position >> 21)
+        stride1 = self.stride
+        stride2 = stride1 << 1
+        stride3 = stride2 + stride1
+        overlap = (position << stride1) & (position << stride2)
+        winning |= overlap & (position << stride3)
+        winning |= overlap & (position >> stride1)
+        overlap >>= stride3
+        winning |= overlap & (position << stride1)
+        winning |= overlap & (position >> stride3)
 
-        overlap = (position << 6) & (position << 12)
-        winning |= overlap & (position << 18)
-        winning |= overlap & (position >> 6)
-        overlap >>= 18
-        winning |= overlap & (position << 6)
-        winning |= overlap & (position >> 18)
+        stride1 = self.stride - 1
+        stride2 = stride1 << 1
+        stride3 = stride2 + stride1
+        overlap = (position << stride1) & (position << stride2)
+        winning |= overlap & (position << stride3)
+        winning |= overlap & (position >> stride1)
+        overlap >>= stride3
+        winning |= overlap & (position << stride1)
+        winning |= overlap & (position >> stride3)
 
-        overlap = (position << 8) & (position << 16)
-        winning |= overlap & (position << 24)
-        winning |= overlap & (position >> 8)
-        overlap >>= 24
-        winning |= overlap & (position << 8)
-        winning |= overlap & (position >> 24)
+        stride1 = self.stride + 1
+        stride2 = stride1 << 1
+        stride3 = stride2 + stride1
+        overlap = (position << stride1) & (position << stride2)
+        winning |= overlap & (position << stride3)
+        winning |= overlap & (position >> stride1)
+        overlap >>= stride3
+        winning |= overlap & (position << stride1)
+        winning |= overlap & (position >> stride3)
 
         return winning & (self.board ^ occupied)
 
@@ -192,15 +202,13 @@ class ConnectFour:  # https://github.com/PascalPons/connect4
         possible: uint64_t
         losing: uint64_t
         forced: uint64_t
-        zero: uint64_t
 
-        zero = 0
         possible = self.possible(occupied)
         losing = self.winning(occupied, position ^ occupied)
         forced = possible & losing
         if forced:
-            if bit_count(forced) > 1:
-                return zero
+            if forced & (forced - 1):  # bit_count(forced) > 1
+                return 0
             else:
                 possible = forced
         return possible & ~(losing >> 1)
@@ -221,27 +229,32 @@ class ConnectFour:  # https://github.com/PascalPons/connect4
         alpha: cint,
         beta: cint,
     ) -> cint:
-        key: uint32_t
+        good: uint64_t
+        min_score: cint
+        max_score: cint
         key_: uint64_t
+        key: uint32_t
         idx: cint
         score: cint
         i_col: cint
-        moves: uint64_t[7]
-        scores: cint[7]  # type: ignore
         n_moves: cint
         i_move: cint
+        move: uint64_t
+        moves: uint64_t[7]
+        scores: cint[7]  # type: ignore
         new_occupied: uint64_t
         new_position: uint64_t
 
         if not compiled:
-            moves = [0] * 7
-            scores = [0] * 7  # type: ignore
+            moves = [0] * self.n_cols
+            scores = [0] * self.n_cols  # type: ignore
 
         good = self.good(occupied, position)
         if good == 0:
             return -(depth >> 1)
         if depth <= 2:
             return 0
+
         min_score = -((depth - 2) >> 1)
         if alpha < min_score:
             alpha = min_score
@@ -252,20 +265,21 @@ class ConnectFour:  # https://github.com/PascalPons/connect4
             beta = max_score
             if alpha >= beta:
                 return beta
-        # key = (self.bottom_row + occupied) | position
+
+        # key_ = (self.bottom_row + occupied) | position
         key_ = occupied + position
         key = cast(uint32_t, key_)
-        idx = key_ % 8388617
+        idx = key_ % self.transpos_tab_size
         if key == self.transpos_tab_keys[idx]:
             score = cast(cint, self.transpos_tab_vals[idx])
-            if score > self.max_score - self.min_score + 1:
-                min_score = score + 2 * self.min_score - self.max_score - 2
+            if score > self.score_shift:
+                min_score = score + self.invalid_score - self.score_shift
                 if alpha < min_score:
                     alpha = min_score
                     if alpha >= beta:
                         return alpha
             else:
-                max_score = score + self.min_score - 1
+                max_score = score + self.invalid_score
                 if beta > max_score:
                     beta = max_score
                     if alpha >= beta:
@@ -275,12 +289,11 @@ class ConnectFour:  # https://github.com/PascalPons/connect4
         for i_col in self.move_order:  # type: ignore
             move = good & self.cols[i_col]
             if move:
-                score = self.score(occupied | move, position | move)
+                # score = self.score(occupied | move, position | move)
+                score = self.score(occupied, position | move)
                 i_move = n_moves
                 n_moves += 1
-                while (
-                    i_move > 0 and scores[i_move - 1] < score  # type: ignore
-                ):
+                while i_move and scores[i_move - 1] < score:  # type: ignore
                     moves[i_move] = moves[i_move - 1]
                     scores[i_move] = scores[i_move - 1]  # type: ignore
                     i_move -= 1
@@ -297,14 +310,16 @@ class ConnectFour:  # https://github.com/PascalPons/connect4
             if score >= beta:
                 self.transpos_tab_keys[idx] = key
                 self.transpos_tab_vals[idx] = cast(
-                    uint8_t, score + self.max_score - 2 * self.min_score + 2
+                    uint8_t, score - self.invalid_score + self.score_shift
                 )
                 return score
             if score > alpha:
                 alpha = score
+
+        score = alpha
         self.transpos_tab_keys[idx] = key
-        self.transpos_tab_vals[idx] = cast(uint8_t, alpha - self.min_score + 1)
-        return alpha
+        self.transpos_tab_vals[idx] = cast(uint8_t, score - self.invalid_score)
+        return score
 
     @ccall
     def solve(
@@ -316,7 +331,7 @@ class ConnectFour:  # https://github.com/PascalPons/connect4
         med_score: cint
         score: cint
 
-        depth = 42 - bit_count(occupied)
+        depth = self.n_cells - bit_count(occupied)
         if self.possible(occupied) & self.winning(occupied, position):
             return cdiv(depth + 1, 2)
         if weak:
@@ -353,15 +368,15 @@ class ConnectFour:  # https://github.com/PascalPons/connect4
         score: cint
         scores: list[cint]
 
-        scores = [self.min_score - 1] * 7
+        scores = [self.invalid_score] * self.n_cols
         new_position = position ^ occupied
-        for i_col in range(7):
+        for i_col in range(self.n_cols):
             if self.free(occupied, i_col):
                 mod_occupied = occupied + self.bottom_cells[i_col]
                 if self.win(position | (mod_occupied & self.cols[i_col])):
-                    score = cdiv(43 - bit_count(occupied), 2)
+                    score = cdiv(self.n_cells - bit_count(occupied) + 1, 2)
                 else:
-                    new_occupied = self.move(occupied, i_col)
+                    new_occupied = occupied | mod_occupied
                     score = -self.solve(new_occupied, new_position, weak)
                 scores[i_col] = score
         return tuple(scores)
@@ -393,20 +408,18 @@ class ConnectFour:  # https://github.com/PascalPons/connect4
     @ccall
     def display(self, occupied: uint64_t, position: uint64_t) -> None:
         one: uint64_t
-        stride: cint
-        row: cint
+        i_row: cint
         _: cint
         cell: uint64_t
 
         one = 1
-        stride = self.n_rows + 1
         string = ""
         color1 = "31"
         color2 = "33"
         if bit_count(occupied) % 2 == 1:
             color1, color2 = color2, color1
-        for row in range(self.n_rows):
-            cell = one << row
+        for i_row in range(self.n_rows):
+            cell = one << i_row
             line = ""
             for _ in range(self.n_cols):
                 if occupied & cell:
@@ -415,6 +428,6 @@ class ConnectFour:  # https://github.com/PascalPons/connect4
                 else:
                     disc = "\u25cb "  # \u25ef
                 line += disc
-                cell <<= stride
+                cell <<= self.stride
             string = line[: len(line) - 1] + "\n" + string
         print(string[: len(string) - 1])
