@@ -1,3 +1,4 @@
+# cython: language_level=3
 # cython: boundscheck=False
 # cython: wraparound=False
 # cython: initializedcheck=False
@@ -64,7 +65,7 @@ class ConnectFour:  # https://github.com/PascalPons/connect4
     invalid_score: cint
     score_shift: cint
 
-    def __cinit__(self) -> None:
+    def __cinit__(self):
         one: uint64_t
         i_col: cint
         bottom_cell: uint64_t
@@ -406,7 +407,7 @@ class ConnectFour:  # https://github.com/PascalPons/connect4
         return occupied, position
 
     @ccall
-    def display(self, occupied: uint64_t, position: uint64_t) -> None:
+    def display(self, occupied: uint64_t, position: uint64_t):
         one: uint64_t
         i_row: cint
         _: cint
