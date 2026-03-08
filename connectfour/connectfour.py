@@ -3,15 +3,14 @@
 from cython import (  # type: ignore
     compiled,
     bint,
-    uint,
     int as cint,
     ulonglong,
-    cfunc,
-    inline,
-    ccall,
-    cclass,
     cast,
+    cfunc,
+    ccall,
+    inline,
     exceptval,
+    cclass,
 )
 from cython.cimports.libc.stdint import (  # type: ignore
     uint8_t,
@@ -22,8 +21,8 @@ from cython.cimports.libc.stdint import (  # type: ignore
 @cfunc
 @inline
 @exceptval(check=False)  # type: ignore
-def bit_count(i: ulonglong) -> uint:
-    n: uint
+def bit_count(i: ulonglong) -> cint:
+    n: cint
 
     n = 0
     while i:
@@ -34,8 +33,8 @@ def bit_count(i: ulonglong) -> uint:
 
 @cclass
 class ConnectFour:
-    n_rows: uint
-    n_cols: uint
+    n_rows: cint
+    n_cols: cint
     min_score: cint
     max_score: cint
     bottom_cells: ulonglong[7]  # type: ignore
@@ -43,25 +42,28 @@ class ConnectFour:
     cols: ulonglong[7]  # type: ignore
     bottom_row: ulonglong
     board: ulonglong
-    move_order: uint[7]  # type: ignore
+    move_order: cint[7]  # type: ignore
     transpos_tab_keys: uint32_t[8388617]  # type: ignore
     transpos_tab_vals: uint8_t[8388617]  # type: ignore
 
     def __cinit__(self) -> None:
-        one: ulonglong = 1
-        i_col: uint
+        one: ulonglong
+        n_cells: cint
+        i_col: cint
         bottom_cell: ulonglong
         top_cell: ulonglong
         col: ulonglong
 
+        one = 1
         self.n_rows = 6
         self.n_cols = 7
         if self.n_cols > 9:
             raise ValueError("board wider than 9 columns")
         if (self.n_rows + 1) * self.n_cols > 64:
             raise ValueError("board too large")
-        self.min_score = -(self.n_rows * self.n_cols) // 2 + 3
-        self.max_score = (self.n_rows * self.n_cols + 1) // 2 - 3
+        n_cells = self.n_rows * self.n_cols
+        self.min_score = -n_cells // 2 + 3
+        self.max_score = (n_cells + 1) // 2 - 3
         if compiled:
             self.bottom_row = 0
             self.board = 0
@@ -105,13 +107,13 @@ class ConnectFour:
     @cfunc
     @inline
     @exceptval(check=False)  # type: ignore
-    def free(self, occupied: ulonglong, i_col: uint) -> bint:
+    def free(self, occupied: ulonglong, i_col: cint) -> bint:
         return occupied & self.top_cells[i_col] == 0  # type: ignore
 
     @cfunc
     @inline
     @exceptval(check=False)  # type: ignore
-    def move(self, occupied: ulonglong, i_col: uint) -> ulonglong:
+    def move(self, occupied: ulonglong, i_col: cint) -> ulonglong:
         return (occupied + self.bottom_cells[i_col]) | occupied  # type: ignore
 
     @cfunc
@@ -195,7 +197,7 @@ class ConnectFour:
     @cfunc
     @inline
     @exceptval(check=False)  # type: ignore
-    def score(self, occupied: ulonglong, position: ulonglong) -> uint:
+    def score(self, occupied: ulonglong, position: ulonglong) -> cint:
         return bit_count(self.winning(occupied, position))
 
     @cfunc
@@ -210,13 +212,13 @@ class ConnectFour:
     ) -> cint:
         key: uint32_t
         key_: ulonglong
-        idx: uint
+        idx: cint
         score: cint
-        i_col: uint
+        i_col: cint
         moves: ulonglong[7]  # type: ignore
         scores: cint[7]  # type: ignore
-        n_moves: uint
-        i_move: uint
+        n_moves: cint
+        i_move: cint
         new_occupied: ulonglong
         new_position: ulonglong
 
@@ -338,7 +340,7 @@ class ConnectFour:
     ) -> tuple[cint, ...]:
         new_occupied: ulonglong
         new_position: ulonglong
-        i_col: uint
+        i_col: cint
         score: cint
         scores: list[cint]
 
@@ -364,7 +366,7 @@ class ConnectFour:
     def play(self, moves: str) -> tuple[ulonglong, ulonglong]:
         occupied: ulonglong
         position: ulonglong
-        i_col: uint
+        i_col: cint
         mod_occupied: ulonglong
 
         occupied = 0
@@ -389,9 +391,9 @@ class ConnectFour:
     @ccall
     def display(self, occupied: ulonglong, position: ulonglong) -> None:
         one: ulonglong
-        stride: uint
-        row: uint
-        _: uint
+        stride: cint
+        row: cint
+        _: cint
         cell: ulonglong
 
         one = 1
