@@ -21,6 +21,13 @@ from cython.cimports.libc.stdint import (  # type: ignore
 @cfunc
 @inline
 @exceptval(check=False)  # type: ignore
+def cdiv(n: cint, d: cint) -> cint:
+    return cast(cint, n / d)
+
+
+@cfunc
+@inline
+@exceptval(check=False)  # type: ignore
 def bit_count(i: uint64_t) -> cint:
     n: cint
 
@@ -62,8 +69,8 @@ class ConnectFour:
         if (self.n_rows + 1) * self.n_cols > 64:
             raise ValueError("board too large")
         n_cells = self.n_rows * self.n_cols
-        self.min_score = -n_cells // 2 + 3
-        self.max_score = (n_cells + 1) // 2 - 3
+        self.min_score = -cdiv(n_cells, 2) + 3
+        self.max_score = cdiv(n_cells + 1, 2) - 3
         if compiled:
             self.bottom_row = 0
             self.board = 0
@@ -77,7 +84,8 @@ class ConnectFour:
                 self.bottom_row |= bottom_cell
                 self.board |= col
                 self.move_order[i_col] = (  # type: ignore
-                    self.n_cols // 2 + (1 - 2 * (i_col % 2)) * (i_col + 1) // 2
+                    cdiv(self.n_cols, 2)
+                    + cdiv((1 - 2 * (i_col % 2)) * (i_col + 1), 2)
                 )
             for i_col in range(8388617):
                 self.transpos_tab_keys[i_col] = 0
@@ -94,7 +102,8 @@ class ConnectFour:
             self.bottom_row = sum(self.bottom_cells)
             self.board = sum(self.cols)
             self.move_order = tuple(  # type: ignore
-                self.n_cols // 2 + (1 - 2 * (i_col % 2)) * (i_col + 1) // 2
+                cdiv(self.n_cols, 2)
+                + cdiv((1 - 2 * (i_col % 2)) * (i_col + 1), 2)
                 for i_col in range(7)
             )
             self.transpos_tab_keys = [0] * 8388617
@@ -224,15 +233,15 @@ class ConnectFour:
 
         good = self.good(occupied, position)
         if good == 0:
-            return -depth // 2
+            return -(depth >> 1)
         if depth <= 2:
             return 0
-        min_score = -(depth - 2) // 2
+        min_score = -((depth - 2) >> 1)
         if alpha < min_score:
             alpha = min_score
             if alpha >= beta:
                 return alpha
-        max_score = (depth - 1) // 2
+        max_score = (depth - 1) >> 1
         if beta > max_score:
             beta = max_score
             if alpha >= beta:
@@ -302,20 +311,20 @@ class ConnectFour:
         score: cint
 
         depth = 42 - bit_count(occupied)
-        if self.possible(occupied) & self.winning(occupied, position) > 0:
-            return (depth + 1) // 2
+        if self.possible(occupied) & self.winning(occupied, position):
+            return cdiv(depth + 1, 2)
         if weak:
             min_score = -1
             max_score = 1
         else:
-            min_score = -depth // 2
-            max_score = (depth + 1) // 2
+            min_score = -cdiv(depth, 2)
+            max_score = cdiv(depth + 1, 2)
         while min_score < max_score:
-            med_score = min_score + (max_score - min_score) // 2
+            med_score = min_score + cdiv(max_score - min_score, 2)
             if med_score <= 0:
-                med_score = min(med_score, min_score // 2)
+                med_score = min(med_score, cdiv(min_score, 2))
             elif med_score >= 0:
-                med_score = max(med_score, max_score // 2)
+                med_score = max(med_score, cdiv(max_score, 2))
             score = self.negamax(
                 occupied, position, depth, med_score, med_score + 1
             )
@@ -344,7 +353,7 @@ class ConnectFour:
             if self.free(occupied, i_col):
                 mod_occupied = occupied + self.bottom_cells[i_col]
                 if self.win(position | (mod_occupied & self.cols[i_col])):
-                    score = (43 - bit_count(occupied)) // 2
+                    score = cdiv(43 - bit_count(occupied), 2)
                 else:
                     new_occupied = self.move(occupied, i_col)
                     score = -self.solve(new_occupied, new_position, weak)
