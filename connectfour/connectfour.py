@@ -11,6 +11,7 @@ from cython import (  # type: ignore
     ccall,
     cclass,
     cast,
+    exceptval,
 )
 from cython.cimports.libc.stdint import (  # type: ignore
     uint8_t,
@@ -19,6 +20,8 @@ from cython.cimports.libc.stdint import (  # type: ignore
 
 
 @cfunc
+@inline
+@exceptval(check=False)  # type: ignore
 def bit_count(i: ulonglong) -> uint:
     n: uint
 
@@ -74,7 +77,7 @@ class ConnectFour:
                 self.move_order[i_col] = (  # type: ignore
                     self.n_cols // 2 + (1 - 2 * (i_col % 2)) * (i_col + 1) // 2
                 )
-            for i_col in range(8388593):
+            for i_col in range(8388617):
                 self.transpos_tab_keys[i_col] = 0  # type: ignore
                 self.transpos_tab_vals[i_col] = 0  # type: ignore
         else:
@@ -96,21 +99,24 @@ class ConnectFour:
                 self.n_cols // 2 + (1 - 2 * (i_col % 2)) * (i_col + 1) // 2
                 for i_col in range(7)
             )
-            self.transpos_tab_keys = [0] * 8388593  # type: ignore
-            self.transpos_tab_vals = [0] * 8388593  # type: ignore
+            self.transpos_tab_keys = [0] * 8388617  # type: ignore
+            self.transpos_tab_vals = [0] * 8388617  # type: ignore
 
     @cfunc
     @inline
+    @exceptval(check=False)  # type: ignore
     def free(self, occupied: ulonglong, i_col: uint) -> bint:
         return occupied & self.top_cells[i_col] == 0  # type: ignore
 
     @cfunc
     @inline
+    @exceptval(check=False)  # type: ignore
     def move(self, occupied: ulonglong, i_col: uint) -> ulonglong:
         return (occupied + self.bottom_cells[i_col]) | occupied  # type: ignore
 
     @cfunc
     @inline
+    @exceptval(check=False)  # type: ignore
     def win(self, position: ulonglong) -> bint:
         overlap: ulonglong
 
@@ -130,11 +136,13 @@ class ConnectFour:
 
     @cfunc
     @inline
+    @exceptval(check=False)  # type: ignore
     def possible(self, occupied: ulonglong) -> ulonglong:
         return (occupied + self.bottom_row) & self.board
 
     @cfunc
     @inline
+    @exceptval(check=False)  # type: ignore
     def winning(self, occupied: ulonglong, position: ulonglong) -> ulonglong:
         winning: ulonglong
         overlap: ulonglong
@@ -166,6 +174,7 @@ class ConnectFour:
 
     @cfunc
     @inline
+    @exceptval(check=False)  # type: ignore
     def good(self, occupied: ulonglong, position: ulonglong) -> ulonglong:
         possible: ulonglong
         losing: ulonglong
@@ -185,10 +194,12 @@ class ConnectFour:
 
     @cfunc
     @inline
+    @exceptval(check=False)  # type: ignore
     def score(self, occupied: ulonglong, position: ulonglong) -> uint:
         return bit_count(self.winning(occupied, position))
 
     @cfunc
+    @exceptval(check=False)  # type: ignore
     def negamax(
         self,
         occupied: ulonglong,
@@ -198,6 +209,7 @@ class ConnectFour:
         beta: cint,
     ) -> cint:
         key: uint32_t
+        key_: ulonglong
         idx: uint
         score: cint
         i_col: uint
@@ -228,8 +240,9 @@ class ConnectFour:
             if alpha >= beta:
                 return beta
         # key = (self.bottom_row + occupied) | position
-        key = occupied + position
-        idx = key % 8388617
+        key_ = occupied + position
+        key = cast(uint32_t, key_)
+        idx = key_ % 8388617
         if key == self.transpos_tab_keys[idx]:  # type: ignore
             score = cast(cint, self.transpos_tab_vals[idx])  # type: ignore
             if score > self.max_score - self.min_score + 1:
@@ -261,15 +274,12 @@ class ConnectFour:
                 moves[i_move] = move  # type: ignore
                 scores[i_move] = score  # type: ignore
 
-        score = -self.min_score
         new_position = position ^ occupied
+        depth -= 1
         for i_move in range(n_moves):
             new_occupied = occupied | moves[i_move]  # type: ignore
-            score = max(
-                score,
-                -self.negamax(
-                    new_occupied, new_position, depth - 1, -beta, -alpha
-                ),
+            score = -self.negamax(
+                new_occupied, new_position, depth, -beta, -alpha
             )
             if score >= beta:
                 self.transpos_tab_keys[idx] = key  # type: ignore
@@ -283,7 +293,7 @@ class ConnectFour:
         self.transpos_tab_vals[idx] = cast(  # type: ignore
             uint8_t, alpha - self.min_score + 1
         )
-        return score
+        return alpha
 
     @ccall
     def solve(
@@ -332,7 +342,7 @@ class ConnectFour:
         score: cint
         scores: list[cint]
 
-        scores = [-self.min_score - 1] * 7
+        scores = [self.min_score - 1] * 7
         new_position = position ^ occupied
         for i_col in range(7):
             if self.free(occupied, i_col):
