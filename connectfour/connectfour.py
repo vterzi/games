@@ -4,7 +4,6 @@ from cython import (  # type: ignore
     compiled,
     bint,
     int as cint,
-    ulonglong,
     cast,
     cfunc,
     ccall,
@@ -15,13 +14,14 @@ from cython import (  # type: ignore
 from cython.cimports.libc.stdint import (  # type: ignore
     uint8_t,
     uint32_t,
+    uint64_t,
 )
 
 
 @cfunc
 @inline
 @exceptval(check=False)  # type: ignore
-def bit_count(i: ulonglong) -> cint:
+def bit_count(i: uint64_t) -> cint:
     n: cint
 
     n = 0
@@ -37,22 +37,22 @@ class ConnectFour:
     n_cols: cint
     min_score: cint
     max_score: cint
-    bottom_cells: ulonglong[7]  # type: ignore
-    top_cells: ulonglong[7]  # type: ignore
-    cols: ulonglong[7]  # type: ignore
-    bottom_row: ulonglong
-    board: ulonglong
+    bottom_cells: uint64_t[7]
+    top_cells: uint64_t[7]
+    cols: uint64_t[7]
+    bottom_row: uint64_t
+    board: uint64_t
     move_order: cint[7]  # type: ignore
-    transpos_tab_keys: uint32_t[8388617]  # type: ignore
-    transpos_tab_vals: uint8_t[8388617]  # type: ignore
+    transpos_tab_keys: uint32_t[8388617]
+    transpos_tab_vals: uint8_t[8388617]
 
     def __cinit__(self) -> None:
-        one: ulonglong
+        one: uint64_t
         n_cells: cint
         i_col: cint
-        bottom_cell: ulonglong
-        top_cell: ulonglong
-        col: ulonglong
+        bottom_cell: uint64_t
+        top_cell: uint64_t
+        col: uint64_t
 
         one = 1
         self.n_rows = 6
@@ -71,25 +71,21 @@ class ConnectFour:
                 bottom_cell = one << (7 * i_col)
                 top_cell = one << (7 * i_col + 5)
                 col = (top_cell << 1) - bottom_cell
-                self.bottom_cells[i_col] = bottom_cell  # type: ignore
-                self.top_cells[i_col] = top_cell  # type: ignore
-                self.cols[i_col] = col  # type: ignore
+                self.bottom_cells[i_col] = bottom_cell
+                self.top_cells[i_col] = top_cell
+                self.cols[i_col] = col
                 self.bottom_row |= bottom_cell
                 self.board |= col
                 self.move_order[i_col] = (  # type: ignore
                     self.n_cols // 2 + (1 - 2 * (i_col % 2)) * (i_col + 1) // 2
                 )
             for i_col in range(8388617):
-                self.transpos_tab_keys[i_col] = 0  # type: ignore
-                self.transpos_tab_vals[i_col] = 0  # type: ignore
+                self.transpos_tab_keys[i_col] = 0
+                self.transpos_tab_vals[i_col] = 0
         else:
-            self.bottom_cells = tuple(  # type: ignore
-                1 << (7 * i_col) for i_col in range(7)
-            )
-            self.top_cells = tuple(  # type: ignore
-                1 << (7 * i_col + 5) for i_col in range(7)
-            )
-            self.cols = tuple(  # type: ignore
+            self.bottom_cells = tuple(1 << (7 * i_col) for i_col in range(7))
+            self.top_cells = tuple(1 << (7 * i_col + 5) for i_col in range(7))
+            self.cols = tuple(
                 (top_cell << 1) - bottom_cell
                 for bottom_cell, top_cell in zip(
                     self.bottom_cells, self.top_cells
@@ -101,26 +97,26 @@ class ConnectFour:
                 self.n_cols // 2 + (1 - 2 * (i_col % 2)) * (i_col + 1) // 2
                 for i_col in range(7)
             )
-            self.transpos_tab_keys = [0] * 8388617  # type: ignore
-            self.transpos_tab_vals = [0] * 8388617  # type: ignore
+            self.transpos_tab_keys = [0] * 8388617
+            self.transpos_tab_vals = [0] * 8388617
 
     @cfunc
     @inline
     @exceptval(check=False)  # type: ignore
-    def free(self, occupied: ulonglong, i_col: cint) -> bint:
-        return occupied & self.top_cells[i_col] == 0  # type: ignore
+    def free(self, occupied: uint64_t, i_col: cint) -> bint:
+        return occupied & self.top_cells[i_col] == 0
 
     @cfunc
     @inline
     @exceptval(check=False)  # type: ignore
-    def move(self, occupied: ulonglong, i_col: cint) -> ulonglong:
-        return (occupied + self.bottom_cells[i_col]) | occupied  # type: ignore
+    def move(self, occupied: uint64_t, i_col: cint) -> uint64_t:
+        return (occupied + self.bottom_cells[i_col]) | occupied
 
     @cfunc
     @inline
     @exceptval(check=False)  # type: ignore
-    def win(self, position: ulonglong) -> bint:
-        overlap: ulonglong
+    def win(self, position: uint64_t) -> bint:
+        overlap: uint64_t
 
         overlap = position & (position >> 1)
         if overlap & (overlap >> 2):
@@ -139,15 +135,15 @@ class ConnectFour:
     @cfunc
     @inline
     @exceptval(check=False)  # type: ignore
-    def possible(self, occupied: ulonglong) -> ulonglong:
+    def possible(self, occupied: uint64_t) -> uint64_t:
         return (occupied + self.bottom_row) & self.board
 
     @cfunc
     @inline
     @exceptval(check=False)  # type: ignore
-    def winning(self, occupied: ulonglong, position: ulonglong) -> ulonglong:
-        winning: ulonglong
-        overlap: ulonglong
+    def winning(self, occupied: uint64_t, position: uint64_t) -> uint64_t:
+        winning: uint64_t
+        overlap: uint64_t
 
         winning = (position << 1) & (position << 2) & (position << 3)
 
@@ -177,11 +173,11 @@ class ConnectFour:
     @cfunc
     @inline
     @exceptval(check=False)  # type: ignore
-    def good(self, occupied: ulonglong, position: ulonglong) -> ulonglong:
-        possible: ulonglong
-        losing: ulonglong
-        forced: ulonglong
-        zero: ulonglong
+    def good(self, occupied: uint64_t, position: uint64_t) -> uint64_t:
+        possible: uint64_t
+        losing: uint64_t
+        forced: uint64_t
+        zero: uint64_t
 
         zero = 0
         possible = self.possible(occupied)
@@ -197,33 +193,33 @@ class ConnectFour:
     @cfunc
     @inline
     @exceptval(check=False)  # type: ignore
-    def score(self, occupied: ulonglong, position: ulonglong) -> cint:
+    def score(self, occupied: uint64_t, position: uint64_t) -> cint:
         return bit_count(self.winning(occupied, position))
 
     @cfunc
     @exceptval(check=False)  # type: ignore
     def negamax(
         self,
-        occupied: ulonglong,
-        position: ulonglong,
+        occupied: uint64_t,
+        position: uint64_t,
         depth: cint,
         alpha: cint,
         beta: cint,
     ) -> cint:
         key: uint32_t
-        key_: ulonglong
+        key_: uint64_t
         idx: cint
         score: cint
         i_col: cint
-        moves: ulonglong[7]  # type: ignore
+        moves: uint64_t[7]
         scores: cint[7]  # type: ignore
         n_moves: cint
         i_move: cint
-        new_occupied: ulonglong
-        new_position: ulonglong
+        new_occupied: uint64_t
+        new_position: uint64_t
 
         if not compiled:
-            moves = [0] * 7  # type: ignore
+            moves = [0] * 7
             scores = [0] * 7  # type: ignore
 
         good = self.good(occupied, position)
@@ -245,8 +241,8 @@ class ConnectFour:
         key_ = occupied + position
         key = cast(uint32_t, key_)
         idx = key_ % 8388617
-        if key == self.transpos_tab_keys[idx]:  # type: ignore
-            score = cast(cint, self.transpos_tab_vals[idx])  # type: ignore
+        if key == self.transpos_tab_keys[idx]:
+            score = cast(cint, self.transpos_tab_vals[idx])
             if score > self.max_score - self.min_score + 1:
                 min_score = score + 2 * self.min_score - self.max_score - 2
                 if alpha < min_score:
@@ -262,7 +258,7 @@ class ConnectFour:
 
         n_moves = 0
         for i_col in self.move_order:  # type: ignore
-            move = good & self.cols[i_col]  # type: ignore
+            move = good & self.cols[i_col]
             if move:
                 score = self.score(occupied | move, position | move)
                 i_move = n_moves
@@ -270,36 +266,34 @@ class ConnectFour:
                 while (
                     i_move > 0 and scores[i_move - 1] < score  # type: ignore
                 ):
-                    moves[i_move] = moves[i_move - 1]  # type: ignore
+                    moves[i_move] = moves[i_move - 1]
                     scores[i_move] = scores[i_move - 1]  # type: ignore
                     i_move -= 1
-                moves[i_move] = move  # type: ignore
+                moves[i_move] = move
                 scores[i_move] = score  # type: ignore
 
         new_position = position ^ occupied
         depth -= 1
         for i_move in range(n_moves):
-            new_occupied = occupied | moves[i_move]  # type: ignore
+            new_occupied = occupied | moves[i_move]
             score = -self.negamax(
                 new_occupied, new_position, depth, -beta, -alpha
             )
             if score >= beta:
-                self.transpos_tab_keys[idx] = key  # type: ignore
-                self.transpos_tab_vals[idx] = cast(  # type: ignore
+                self.transpos_tab_keys[idx] = key
+                self.transpos_tab_vals[idx] = cast(
                     uint8_t, score + self.max_score - 2 * self.min_score + 2
                 )
                 return score
             if score > alpha:
                 alpha = score
-        self.transpos_tab_keys[idx] = key  # type: ignore
-        self.transpos_tab_vals[idx] = cast(  # type: ignore
-            uint8_t, alpha - self.min_score + 1
-        )
+        self.transpos_tab_keys[idx] = key
+        self.transpos_tab_vals[idx] = cast(uint8_t, alpha - self.min_score + 1)
         return alpha
 
     @ccall
     def solve(
-        self, occupied: ulonglong, position: ulonglong, weak: bint = False
+        self, occupied: uint64_t, position: uint64_t, weak: bint = False
     ) -> cint:
         depth: cint
         min_score: cint
@@ -334,12 +328,12 @@ class ConnectFour:
     @ccall
     def analyze(
         self,
-        occupied: ulonglong,
-        position: ulonglong,
+        occupied: uint64_t,
+        position: uint64_t,
         weak: bint = False,
     ) -> tuple[cint, ...]:
-        new_occupied: ulonglong
-        new_position: ulonglong
+        new_occupied: uint64_t
+        new_position: uint64_t
         i_col: cint
         score: cint
         scores: list[cint]
@@ -348,13 +342,8 @@ class ConnectFour:
         new_position = position ^ occupied
         for i_col in range(7):
             if self.free(occupied, i_col):
-                mod_occupied = (
-                    occupied + self.bottom_cells[i_col]  # type: ignore
-                )
-                if self.win(
-                    position
-                    | (mod_occupied & self.cols[i_col])  # type: ignore
-                ):
+                mod_occupied = occupied + self.bottom_cells[i_col]
+                if self.win(position | (mod_occupied & self.cols[i_col])):
                     score = (43 - bit_count(occupied)) // 2
                 else:
                     new_occupied = self.move(occupied, i_col)
@@ -363,11 +352,11 @@ class ConnectFour:
         return tuple(scores)
 
     @ccall
-    def play(self, moves: str) -> tuple[ulonglong, ulonglong]:
-        occupied: ulonglong
-        position: ulonglong
+    def play(self, moves: str) -> tuple[uint64_t, uint64_t]:
+        occupied: uint64_t
+        position: uint64_t
         i_col: cint
-        mod_occupied: ulonglong
+        mod_occupied: uint64_t
 
         occupied = 0
         position = 0
@@ -379,22 +368,20 @@ class ConnectFour:
                 or not self.free(occupied, i_col)
             ):
                 break
-            mod_occupied = occupied + self.bottom_cells[i_col]  # type: ignore
-            if self.win(
-                position | (mod_occupied & self.cols[i_col])  # type: ignore
-            ):
+            mod_occupied = occupied + self.bottom_cells[i_col]
+            if self.win(position | (mod_occupied & self.cols[i_col])):
                 break
             position ^= occupied
             occupied |= mod_occupied
         return occupied, position
 
     @ccall
-    def display(self, occupied: ulonglong, position: ulonglong) -> None:
-        one: ulonglong
+    def display(self, occupied: uint64_t, position: uint64_t) -> None:
+        one: uint64_t
         stride: cint
         row: cint
         _: cint
-        cell: ulonglong
+        cell: uint64_t
 
         one = 1
         stride = self.n_rows + 1
