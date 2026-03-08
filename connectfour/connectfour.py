@@ -1,4 +1,10 @@
-# https://github.com/PascalPons/connect4
+# cython: boundscheck=False
+# cython: wraparound=False
+# cython: initializedcheck=False
+# cython: overflowcheck=False
+# cython: nonecheck=False
+# cython: cdivision=True
+# cython: cpow=True
 
 from cython import (  # type: ignore
     compiled,
@@ -39,7 +45,7 @@ def bit_count(i: uint64_t) -> cint:
 
 
 @cclass
-class ConnectFour:
+class ConnectFour:  # https://github.com/PascalPons/connect4
     n_rows: cint
     n_cols: cint
     min_score: cint
