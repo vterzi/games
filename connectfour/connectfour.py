@@ -367,7 +367,7 @@ class ConnectFour:  # https://github.com/PascalPons/connect4
         return tuple(scores)
 
     @ccall
-    def play(self, moves: str) -> tuple[uint64_t, uint64_t]:
+    def play(self, moves: str) -> tuple[uint64_t, ...]:
         occupied: uint64_t
         position: uint64_t
         i_col: cint
