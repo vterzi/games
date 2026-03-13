@@ -65,7 +65,7 @@ class ConnectFour:  # https://github.com/PascalPons/connect4
     invalid_score: cint
     score_shift: cint
 
-    def __cinit__(self):
+    def __cinit__(self) -> None:
         one: uint64_t
         i_col: cint
         bottom_cell: uint64_t
