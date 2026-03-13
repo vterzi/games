@@ -233,8 +233,8 @@ class ConnectFour:  # https://github.com/PascalPons/connect4
         good: uint64_t
         min_score: cint
         max_score: cint
-        key_: uint64_t
-        key: uint32_t
+        full_key: uint64_t
+        partial_key: uint32_t
         idx: cint
         score: cint
         i_col: cint
@@ -267,11 +267,11 @@ class ConnectFour:  # https://github.com/PascalPons/connect4
             if alpha >= beta:
                 return beta
 
-        # key_ = (self.bottom_row + occupied) | position
-        key_ = occupied + position
-        key = cast(uint32_t, key_)
-        idx = key_ % self.transpos_tab_size
-        if key == self.transpos_tab_keys[idx]:
+        # full_key = (self.bottom_row + occupied) | position
+        full_key = occupied + position
+        partial_key = cast(uint32_t, full_key)
+        idx = full_key % self.transpos_tab_size
+        if partial_key == self.transpos_tab_keys[idx]:
             score = cast(cint, self.transpos_tab_vals[idx])
             if score > self.score_shift:
                 min_score = score + self.invalid_score - self.score_shift
@@ -309,7 +309,7 @@ class ConnectFour:  # https://github.com/PascalPons/connect4
                 new_occupied, new_position, depth, -beta, -alpha
             )
             if score >= beta:
-                self.transpos_tab_keys[idx] = key
+                self.transpos_tab_keys[idx] = partial_key
                 self.transpos_tab_vals[idx] = cast(
                     uint8_t, score - self.invalid_score + self.score_shift
                 )
@@ -318,7 +318,7 @@ class ConnectFour:  # https://github.com/PascalPons/connect4
                 alpha = score
 
         score = alpha
-        self.transpos_tab_keys[idx] = key
+        self.transpos_tab_keys[idx] = partial_key
         self.transpos_tab_vals[idx] = cast(uint8_t, score - self.invalid_score)
         return score
 
