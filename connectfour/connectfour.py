@@ -279,7 +279,7 @@ class ConnectFour:  # https://github.com/PascalPons/connect4
                     alpha = min_score
                     if alpha >= beta:
                         return alpha
-            else:
+            elif score > 0:
                 max_score = score + self.invalid_score
                 if beta > max_score:
                     beta = max_score
