@@ -7,6 +7,8 @@
 # cython: cdivision=True
 # cython: cpow=True
 
+from math import gcd
+
 from cython import (  # type: ignore
     compiled,
     bint,
@@ -49,15 +51,16 @@ def bit_count(i: uint64_t) -> cint:
 class ConnectFour:  # https://github.com/PascalPons/connect4
     n_rows: cint
     n_cols: cint
-    bottom_cells: uint64_t[7]
-    top_cells: uint64_t[7]
-    cols: uint64_t[7]
+    bottom_cells: uint64_t[7]  # n_cols
+    top_cells: uint64_t[7]  # n_cols
+    cols: uint64_t[7]  # n_cols
+    ext_cols: uint64_t[7]  # n_cols
     bottom_row: uint64_t
     board: uint64_t
-    move_order: cint[7]  # type: ignore
+    move_order: cint[7]  # n_cols # type: ignore
     transpos_tab_size: cint
-    transpos_tab_keys: uint32_t[(1 << 23) + 9]
-    transpos_tab_vals: uint8_t[(1 << 23) + 9]
+    transpos_tab_keys: uint32_t[(1 << 23) + 9]  # transpos_tab_size
+    transpos_tab_vals: uint8_t[(1 << 23) + 9]  # transpos_tab_size
     n_cells: cint
     stride: cint
     min_score: cint
@@ -71,31 +74,49 @@ class ConnectFour:  # https://github.com/PascalPons/connect4
         bottom_cell: uint64_t
         top_cell: uint64_t
         col: uint64_t
+        n_ext_cells: cint
+        tab_size_coprime: uint64_t
+        tab_size_lo_bound: cint
+
+        N_ROWS: cint = 6
+        N_COLS: cint = 7
+        TAB_SIZE: cint = (1 << 23) + 9
 
         one = 1
-        self.n_rows = 6
-        self.n_cols = 7
-        self.transpos_tab_size = (1 << 23) + 9
-        self.n_rows = max(self.n_rows, 0)
-        self.n_cols = max(self.n_cols, 0)
-        self.transpos_tab_size = max(self.transpos_tab_size, 0)
-        self.n_cells = self.n_rows * self.n_cols
-        self.stride = self.n_rows + 1
-        if self.n_cols > 9:
+        self.n_rows = N_ROWS
+        self.n_cols = N_COLS
+        if self.n_rows < 4 or self.n_cols < 4:
+            raise ValueError("invalid board size")
+        if self.n_cols > 9:  # necessary for `move_str`
             raise ValueError("board wider than 9 columns")
-        if self.n_cells + self.n_cols > 64:
+        self.n_cells = self.n_rows * self.n_cols
+        n_ext_cells = self.n_cells + self.n_cols
+        if n_ext_cells > 64:
             raise ValueError("board too large")
+        self.stride = self.n_rows + 1
+
+        tab_size_coprime = one << 32
+        tab_size_lo_bound = one << (n_ext_cells - 32)
+        self.transpos_tab_size = TAB_SIZE
+        if gcd(tab_size_coprime, self.transpos_tab_size) > 1:
+            raise ValueError("transposition table size not coprime with 2^32")
+        if self.transpos_tab_size <= tab_size_lo_bound:
+            raise ValueError("transposition table too small")
+
         self.min_score = -cdiv(self.n_cells, 2) + 3
         self.max_score = cdiv(self.n_cells + 1, 2) - 3
         self.invalid_score = self.min_score - 1
         self.score_shift = self.max_score - self.invalid_score
+
         if not compiled:
             self.bottom_cells = [0] * self.n_cols
             self.top_cells = [0] * self.n_cols
             self.cols = [0] * self.n_cols
+            self.ext_cols = [0] * self.n_cols
             self.move_order = [0] * self.n_cols  # type: ignore
             self.transpos_tab_keys = [0] * self.transpos_tab_size
             self.transpos_tab_vals = [0] * self.transpos_tab_size
+
         self.bottom_row = 0
         self.board = 0
         for i_col in range(self.n_cols):
@@ -105,15 +126,42 @@ class ConnectFour:  # https://github.com/PascalPons/connect4
             self.bottom_cells[i_col] = bottom_cell
             self.top_cells[i_col] = top_cell
             self.cols[i_col] = col
+            self.ext_cols[i_col] = (top_cell << 2) - bottom_cell
             self.bottom_row |= bottom_cell
             self.board |= col
             self.move_order[i_col] = (  # type: ignore
                 cdiv(self.n_cols, 2)
                 + cdiv((1 - 2 * (i_col % 2)) * (i_col + 1), 2)
             )
+
         for i_col in range(self.transpos_tab_size):
             self.transpos_tab_keys[i_col] = 0
             self.transpos_tab_vals[i_col] = 0
+
+    @cfunc
+    @inline
+    @exceptval(check=False)  # type: ignore
+    def key(self, key: uint64_t) -> uint64_t:
+        mirror_key: uint64_t
+        i_col: cint
+        step: cint
+        shift: cint
+        up_col: cint
+
+        step = self.stride << 1
+        i_col = self.n_cols >> 1
+        if self.n_cols & 1:
+            mirror_key = key & self.ext_cols[i_col]
+            shift = 0
+        else:
+            mirror_key = 0
+            shift = -self.stride
+        up_col = self.n_cols - 1
+        for i_col in range(i_col - 1, -1, -1):
+            shift += step
+            mirror_key |= (key & self.ext_cols[i_col]) << shift
+            mirror_key |= (key & self.ext_cols[up_col - i_col]) >> shift
+        return min(key, mirror_key)
 
     @cfunc
     @inline
@@ -241,8 +289,8 @@ class ConnectFour:  # https://github.com/PascalPons/connect4
         n_moves: cint
         i_move: cint
         move: uint64_t
-        moves: uint64_t[7]
-        scores: cint[7]  # type: ignore
+        moves: uint64_t[7]  # n_cols
+        scores: cint[7]  # n_cols # type: ignore
         new_occupied: uint64_t
         new_position: uint64_t
 
@@ -383,16 +431,17 @@ class ConnectFour:  # https://github.com/PascalPons/connect4
         return tuple(scores)
 
     @ccall
-    def play(self, moves: str) -> tuple[uint64_t, ...]:
+    def play(self, move_str: str) -> tuple[uint64_t, ...]:
         occupied: uint64_t
         position: uint64_t
+        move_char: str
         i_col: cint
         mod_occupied: uint64_t
 
         occupied = 0
         position = 0
-        for move in moves:
-            i_col = ord(move) - ord("1")
+        for move_char in move_str:
+            i_col = ord(move_char) - ord("1")
             if (
                 i_col < 0
                 or i_col >= self.n_cols
@@ -409,9 +458,15 @@ class ConnectFour:  # https://github.com/PascalPons/connect4
     @ccall
     def display(self, occupied: uint64_t, position: uint64_t):
         one: uint64_t
+        string: str
+        color1: str
+        color2: str
         i_row: cint
         _: cint
         cell: uint64_t
+        line: str
+        color: str
+        disc: str
 
         one = 1
         string = ""
@@ -430,5 +485,5 @@ class ConnectFour:  # https://github.com/PascalPons/connect4
                     disc = "\u25cb "  # \u25ef
                 line += disc
                 cell <<= self.stride
-            string = line[: len(line) - 1] + "\n" + string
+            string = line + "\n" + string
         print(string[: len(string) - 1])
