@@ -61,6 +61,10 @@ class ConnectFour:  # https://github.com/PascalPons/connect4
     transpos_tab_size: cint
     transpos_tab_keys: uint32_t[(1 << 23) + 9]  # transpos_tab_size
     transpos_tab_vals: uint8_t[(1 << 23) + 9]  # transpos_tab_size
+    opening_tab_size: cint
+    opening_tab_depth: cint
+    opening_tab_keys: uint32_t[(1 << 23) + 9]  # opening_tab_size
+    opening_tab_vals: uint8_t[(1 << 23) + 9]  # opening_tab_size
     n_cells: cint
     stride: cint
     min_score: cint
@@ -68,7 +72,7 @@ class ConnectFour:  # https://github.com/PascalPons/connect4
     invalid_score: cint
     score_shift: cint
 
-    def __cinit__(self) -> None:
+    def __cinit__(self, opening_file: str = "") -> None:
         one: uint64_t
         i_col: cint
         bottom_cell: uint64_t
@@ -77,6 +81,19 @@ class ConnectFour:  # https://github.com/PascalPons/connect4
         n_ext_cells: cint
         tab_size_coprime: uint64_t
         tab_size_lo_bound: cint
+        header: str
+        line: str
+        tokens: list[str]
+        move_str: str
+        score_str: str
+        score: cint
+        n_moves: cint
+        occupied: uint64_t
+        position: uint64_t
+        unique_full_key: uint64_t
+        unique_partial_key: uint32_t
+        idx: cint
+        saved_score: cint
 
         N_ROWS: cint = 6
         N_COLS: cint = 7
@@ -102,6 +119,12 @@ class ConnectFour:  # https://github.com/PascalPons/connect4
             raise ValueError("transposition table size not coprime with 2^32")
         if self.transpos_tab_size <= tab_size_lo_bound:
             raise ValueError("transposition table too small")
+        self.opening_tab_size = TAB_SIZE
+        if gcd(tab_size_coprime, self.opening_tab_size) > 1:
+            raise ValueError("opening table size not coprime with 2^32")
+        if self.opening_tab_size <= tab_size_lo_bound:
+            raise ValueError("opening table too small")
+        self.opening_tab_depth = 0
 
         self.min_score = -cdiv(self.n_cells, 2) + 3
         self.max_score = cdiv(self.n_cells + 1, 2) - 3
@@ -116,6 +139,8 @@ class ConnectFour:  # https://github.com/PascalPons/connect4
             self.move_order = [0] * self.n_cols  # type: ignore
             self.transpos_tab_keys = [0] * self.transpos_tab_size
             self.transpos_tab_vals = [0] * self.transpos_tab_size
+            self.opening_tab_keys = [0] * self.opening_tab_size
+            self.opening_tab_vals = [0] * self.opening_tab_size
 
         self.bottom_row = 0
         self.board = 0
@@ -137,6 +162,42 @@ class ConnectFour:  # https://github.com/PascalPons/connect4
         for i_col in range(self.transpos_tab_size):
             self.transpos_tab_keys[i_col] = 0
             self.transpos_tab_vals[i_col] = 0
+
+        for i_col in range(self.opening_tab_size):
+            self.opening_tab_keys[i_col] = 0
+            self.opening_tab_vals[i_col] = 0
+
+        if len(opening_file) > 0:
+            with open(opening_file, "r") as file:
+                header = next(file)
+                if tuple(header.split()) != (
+                    str(self.n_cols),
+                    str(self.n_rows),
+                ):
+                    raise ValueError("invalid opening file header")
+                for line in file:
+                    if len(line.strip()) == 0:
+                        continue
+                    tokens = line.split()
+                    if len(tokens) < 2:
+                        tokens.insert(0, "")
+                    move_str, score_str = tokens
+                    score = cast(cint, int(score_str))
+                    n_moves = len(move_str)
+                    if n_moves > self.opening_tab_depth:
+                        self.opening_tab_depth = n_moves
+                    occupied, position = self.play(move_str)
+                    unique_full_key = self.key(occupied + position)
+                    unique_partial_key = cast(uint32_t, unique_full_key)
+                    idx = unique_full_key % self.opening_tab_size
+                    saved_score = cast(cint, self.opening_tab_vals[idx])
+                    if saved_score == 0 or abs(score) < abs(
+                        saved_score + self.invalid_score
+                    ):
+                        self.opening_tab_keys[idx] = unique_partial_key
+                        self.opening_tab_vals[idx] = cast(
+                            uint8_t, score - self.invalid_score
+                        )
 
     @cfunc
     @inline
@@ -284,6 +345,9 @@ class ConnectFour:  # https://github.com/PascalPons/connect4
         full_key: uint64_t
         partial_key: uint32_t
         idx: cint
+        unique_full_key: uint64_t
+        unique_partial_key: uint32_t
+        idx_: cint
         score: cint
         i_col: cint
         n_moves: cint
@@ -333,6 +397,16 @@ class ConnectFour:  # https://github.com/PascalPons/connect4
                     beta = max_score
                     if alpha >= beta:
                         return beta
+
+        if self.n_cells - depth <= self.opening_tab_depth:
+            unique_full_key = self.key(full_key)
+            unique_partial_key = cast(uint32_t, unique_full_key)
+            idx_ = unique_full_key % self.opening_tab_size
+            if unique_partial_key == self.opening_tab_keys[idx_]:
+                score = cast(cint, self.opening_tab_vals[idx_])
+                if score > 0:
+                    score += self.invalid_score
+                    return score
 
         n_moves = 0
         for i_col in self.move_order:  # type: ignore
@@ -403,6 +477,75 @@ class ConnectFour:  # https://github.com/PascalPons/connect4
             else:
                 min_score = score
         return min_score
+
+    @cfunc
+    def explore(
+        self,
+        keys: set[uint64_t],
+        score_dict: dict[str, cint],
+        move_str: str,
+        depth: cint,
+    ):
+        occupied: uint64_t
+        position: uint64_t
+        key: uint64_t
+        good: uint64_t
+        score: cint
+        i_col: cint
+        n_moves: cint
+        i_move: cint
+        move: uint64_t
+        moves: cint[7]  # n_cols # type: ignore
+        scores: cint[7]  # n_cols # type: ignore
+
+        if not compiled:
+            moves = [0] * self.n_cols  # type: ignore
+            scores = [0] * self.n_cols  # type: ignore
+
+        if depth <= 0:
+            return
+        occupied, position = self.play(move_str)
+        key = self.key(occupied + position)
+        if key in keys:
+            return
+        good = self.good(occupied, position)
+        if good == 0:
+            return
+        if self.n_cells - bit_count(occupied) <= 2:
+            return
+
+        keys.add(key)
+        score_dict[move_str] = self.solve(occupied, position)
+
+        n_moves = 0
+        for i_col in self.move_order:  # type: ignore
+            move = good & self.cols[i_col]
+            if move:
+                # score = self.score(occupied | move, position | move)
+                score = self.score(occupied, position | move)
+                i_move = n_moves
+                n_moves += 1
+                while i_move and scores[i_move - 1] < score:  # type: ignore
+                    moves[i_move] = moves[i_move - 1]  # type: ignore
+                    scores[i_move] = scores[i_move - 1]  # type: ignore
+                    i_move -= 1
+                moves[i_move] = i_col  # type: ignore
+                scores[i_move] = score  # type: ignore
+
+        depth -= 1
+        for i_move in range(n_moves):
+            i_col = moves[i_move]  # type: ignore
+            self.explore(keys, score_dict, move_str + str(i_col + 1), depth)
+
+    @ccall
+    def generate(self, depth: cint) -> dict[str, cint]:
+        keys: set[uint64_t]
+        scores: dict[str, cint]
+
+        keys = set()
+        scores = {}
+        self.explore(keys, scores, "", depth + 1)
+        return scores
 
     @ccall
     def analyze(
