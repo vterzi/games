@@ -231,12 +231,13 @@ class ConnectFourSolver:  # https://github.com/PascalPons/connect4
             ):
                 break
             mod_occupied = occupied + self.bottom_cells[i_col]
-            if self.winning_position(
+            win = self.winning_position(
                 position | (mod_occupied & self.cols[i_col])
-            ):
-                break
+            )
             position ^= occupied
             occupied |= mod_occupied
+            if win:
+                break
         return occupied, position
 
     @cfunc
