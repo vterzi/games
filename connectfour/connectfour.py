@@ -90,8 +90,8 @@ class ConnectFour:  # https://github.com/PascalPons/connect4
         n_moves: cint
         occupied: uint64_t
         position: uint64_t
-        unique_full_key: uint64_t
-        unique_partial_key: uint32_t
+        full_unique_key: uint64_t
+        partial_unique_key: uint32_t
         idx: cint
         saved_score: cint
 
@@ -170,10 +170,7 @@ class ConnectFour:  # https://github.com/PascalPons/connect4
         if len(opening_file) > 0:
             with open(opening_file, "r") as file:
                 header = next(file)
-                if tuple(header.split()) != (
-                    str(self.n_cols),
-                    str(self.n_rows),
-                ):
+                if header.split() != [str(self.n_cols), str(self.n_rows)]:
                     raise ValueError("invalid opening file header")
                 for line in file:
                     if len(line.strip()) == 0:
@@ -187,14 +184,14 @@ class ConnectFour:  # https://github.com/PascalPons/connect4
                     if n_moves > self.opening_tab_depth:
                         self.opening_tab_depth = n_moves
                     occupied, position = self.play(move_str)
-                    unique_full_key = self.key(occupied + position)
-                    unique_partial_key = cast(uint32_t, unique_full_key)
-                    idx = unique_full_key % self.opening_tab_size
+                    full_unique_key = self.key(occupied + position)
+                    partial_unique_key = cast(uint32_t, full_unique_key)
+                    idx = full_unique_key % self.opening_tab_size
                     saved_score = cast(cint, self.opening_tab_vals[idx])
                     if saved_score == 0 or abs(score) < abs(
                         saved_score + self.invalid_score
                     ):
-                        self.opening_tab_keys[idx] = unique_partial_key
+                        self.opening_tab_keys[idx] = partial_unique_key
                         self.opening_tab_vals[idx] = cast(
                             uint8_t, score - self.invalid_score
                         )
@@ -349,8 +346,8 @@ class ConnectFour:  # https://github.com/PascalPons/connect4
         full_key: uint64_t
         partial_key: uint32_t
         idx: cint
-        unique_full_key: uint64_t
-        unique_partial_key: uint32_t
+        full_unique_key: uint64_t
+        partial_unique_key: uint32_t
         idx_: cint
         score: cint
         i_col: cint
@@ -403,10 +400,10 @@ class ConnectFour:  # https://github.com/PascalPons/connect4
                         return beta
 
         if self.n_cells - depth <= self.opening_tab_depth:
-            unique_full_key = self.key(full_key)
-            unique_partial_key = cast(uint32_t, unique_full_key)
-            idx_ = unique_full_key % self.opening_tab_size
-            if unique_partial_key == self.opening_tab_keys[idx_]:
+            full_unique_key = self.key(full_key)
+            partial_unique_key = cast(uint32_t, full_unique_key)
+            idx_ = full_unique_key % self.opening_tab_size
+            if partial_unique_key == self.opening_tab_keys[idx_]:
                 score = cast(cint, self.opening_tab_vals[idx_])
                 if score > 0:
                     score += self.invalid_score
