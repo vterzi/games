@@ -183,8 +183,8 @@ class ConnectFourSolver:  # https://github.com/PascalPons/connect4
                     n_moves = len(move_str)
                     if n_moves > self.opening_tab_depth:
                         self.opening_tab_depth = n_moves
-                    occupied, position = self.play(move_str)
-                    full_unique_key = self.key(occupied + position)
+                    occupied, position = self.play_moves(move_str)
+                    full_unique_key = self.unique_key(occupied + position)
                     partial_unique_key = cast(uint32_t, full_unique_key)
                     idx = full_unique_key % self.opening_tab_size
                     saved_score = cast(cint, self.opening_tab_vals[idx])
@@ -203,7 +203,7 @@ class ConnectFourSolver:  # https://github.com/PascalPons/connect4
     @cfunc
     @inline
     @exceptval(check=False)  # type: ignore
-    def key(self, key: uint64_t) -> uint64_t:
+    def unique_key(self, key: uint64_t) -> uint64_t:
         mirror_key: uint64_t
         i_col: cint
         step: cint
@@ -228,13 +228,13 @@ class ConnectFourSolver:  # https://github.com/PascalPons/connect4
     @cfunc
     @inline
     @exceptval(check=False)  # type: ignore
-    def free(self, occupied: uint64_t, i_col: cint) -> bint:
+    def free_col(self, occupied: uint64_t, i_col: cint) -> bint:
         return occupied & self.top_cells[i_col] == 0
 
     @cfunc
     @inline
     @exceptval(check=False)  # type: ignore
-    def win(self, position: uint64_t) -> bint:
+    def winning_position(self, position: uint64_t) -> bint:
         stride: cint
         overlap: uint64_t
 
@@ -259,13 +259,15 @@ class ConnectFourSolver:  # https://github.com/PascalPons/connect4
     @cfunc
     @inline
     @exceptval(check=False)  # type: ignore
-    def possible(self, occupied: uint64_t) -> uint64_t:
+    def possible_moves(self, occupied: uint64_t) -> uint64_t:
         return (occupied + self.bottom_row) & self.board
 
     @cfunc
     @inline
     @exceptval(check=False)  # type: ignore
-    def winning(self, occupied: uint64_t, position: uint64_t) -> uint64_t:
+    def winning_moves(
+        self, occupied: uint64_t, position: uint64_t
+    ) -> uint64_t:
         stride1: cint
         stride2: cint
         stride3: cint
@@ -309,26 +311,27 @@ class ConnectFourSolver:  # https://github.com/PascalPons/connect4
     @cfunc
     @inline
     @exceptval(check=False)  # type: ignore
-    def good(self, occupied: uint64_t, position: uint64_t) -> uint64_t:
-        possible: uint64_t
-        losing: uint64_t
-        forced: uint64_t
+    def good_moves(self, occupied: uint64_t, position: uint64_t) -> uint64_t:
+        possible_moves: uint64_t
+        losing_moves: uint64_t
+        forced_moves: uint64_t
 
-        possible = self.possible(occupied)
-        losing = self.winning(occupied, position ^ occupied)
-        forced = possible & losing
-        if forced:
-            if forced & (forced - 1):  # bit_count(forced) > 1
+        possible_moves = self.possible_moves(occupied)
+        losing_moves = self.winning_moves(occupied, position ^ occupied)
+        forced_moves = possible_moves & losing_moves
+        if forced_moves:
+            # bit_count(forced_moves) > 1
+            if forced_moves & (forced_moves - 1):
                 return 0
             else:
-                possible = forced
-        return possible & ~(losing >> 1)
+                possible_moves = forced_moves
+        return possible_moves & ~(losing_moves >> 1)
 
     @cfunc
     @inline
     @exceptval(check=False)  # type: ignore
     def score(self, occupied: uint64_t, position: uint64_t) -> cint:
-        return bit_count(self.winning(occupied, position))
+        return bit_count(self.winning_moves(occupied, position))
 
     @cfunc
     @exceptval(check=False)  # type: ignore
@@ -340,7 +343,7 @@ class ConnectFourSolver:  # https://github.com/PascalPons/connect4
         alpha: cint,
         beta: cint,
     ) -> cint:
-        good: uint64_t
+        good_moves: uint64_t
         min_score: cint
         max_score: cint
         full_key: uint64_t
@@ -348,7 +351,7 @@ class ConnectFourSolver:  # https://github.com/PascalPons/connect4
         idx: cint
         full_unique_key: uint64_t
         partial_unique_key: uint32_t
-        idx_: cint
+        unique_idx: cint
         score: cint
         i_col: cint
         n_moves: cint
@@ -363,8 +366,8 @@ class ConnectFourSolver:  # https://github.com/PascalPons/connect4
             moves = [0] * self.n_cols
             scores = [0] * self.n_cols  # type: ignore
 
-        good = self.good(occupied, position)
-        if good == 0:
+        good_moves = self.good_moves(occupied, position)
+        if good_moves == 0:
             return -(depth >> 1)
         if depth <= 2:
             return 0
@@ -400,18 +403,18 @@ class ConnectFourSolver:  # https://github.com/PascalPons/connect4
                         return beta
 
         if self.n_cells - depth <= self.opening_tab_depth:
-            full_unique_key = self.key(full_key)
+            full_unique_key = self.unique_key(full_key)
             partial_unique_key = cast(uint32_t, full_unique_key)
-            idx_ = full_unique_key % self.opening_tab_size
-            if partial_unique_key == self.opening_tab_keys[idx_]:
-                score = cast(cint, self.opening_tab_vals[idx_])
+            unique_idx = full_unique_key % self.opening_tab_size
+            if partial_unique_key == self.opening_tab_keys[unique_idx]:
+                score = cast(cint, self.opening_tab_vals[unique_idx])
                 if score > 0:
                     score += self.invalid_score
                     return score
 
         n_moves = 0
         for i_col in self.move_order:  # type: ignore
-            move = good & self.cols[i_col]
+            move = good_moves & self.cols[i_col]
             if move:
                 # score = self.score(occupied | move, position | move)
                 score = self.score(occupied, position | move)
@@ -456,7 +459,9 @@ class ConnectFourSolver:  # https://github.com/PascalPons/connect4
         score: cint
 
         depth = self.n_cells - bit_count(occupied)
-        if self.possible(occupied) & self.winning(occupied, position):
+        if self.possible_moves(occupied) & self.winning_moves(
+            occupied, position
+        ):
             return cdiv(depth + 1, 2)
         if weak:
             min_score = -1
@@ -490,7 +495,7 @@ class ConnectFourSolver:  # https://github.com/PascalPons/connect4
         occupied: uint64_t
         position: uint64_t
         key: uint64_t
-        good: uint64_t
+        good_moves: uint64_t
         score: cint
         i_col: cint
         n_moves: cint
@@ -505,12 +510,12 @@ class ConnectFourSolver:  # https://github.com/PascalPons/connect4
 
         if depth <= 0:
             return
-        occupied, position = self.play(move_str)
-        key = self.key(occupied + position)
+        occupied, position = self.play_moves(move_str)
+        key = self.unique_key(occupied + position)
         if key in keys:
             return
-        good = self.good(occupied, position)
-        if good == 0:
+        good_moves = self.good_moves(occupied, position)
+        if good_moves == 0:
             return
         if self.n_cells - bit_count(occupied) <= 2:
             return
@@ -520,7 +525,7 @@ class ConnectFourSolver:  # https://github.com/PascalPons/connect4
 
         n_moves = 0
         for i_col in self.move_order:  # type: ignore
-            move = good & self.cols[i_col]
+            move = good_moves & self.cols[i_col]
             if move:
                 # score = self.score(occupied | move, position | move)
                 score = self.score(occupied, position | move)
@@ -564,9 +569,11 @@ class ConnectFourSolver:  # https://github.com/PascalPons/connect4
         scores = [self.invalid_score] * self.n_cols
         new_position = position ^ occupied
         for i_col in range(self.n_cols):
-            if self.free(occupied, i_col):
+            if self.free_col(occupied, i_col):
                 mod_occupied = occupied + self.bottom_cells[i_col]
-                if self.win(position | (mod_occupied & self.cols[i_col])):
+                if self.winning_position(
+                    position | (mod_occupied & self.cols[i_col])
+                ):
                     score = cdiv(self.n_cells - bit_count(occupied) + 1, 2)
                 else:
                     new_occupied = occupied | mod_occupied
@@ -575,7 +582,7 @@ class ConnectFourSolver:  # https://github.com/PascalPons/connect4
         return tuple(scores)
 
     @ccall
-    def play(self, move_str: str) -> tuple[uint64_t, ...]:
+    def play_moves(self, move_str: str) -> tuple[uint64_t, ...]:
         occupied: uint64_t
         position: uint64_t
         move_char: str
@@ -589,11 +596,13 @@ class ConnectFourSolver:  # https://github.com/PascalPons/connect4
             if (
                 i_col < 0
                 or i_col >= self.n_cols
-                or not self.free(occupied, i_col)
+                or not self.free_col(occupied, i_col)
             ):
                 break
             mod_occupied = occupied + self.bottom_cells[i_col]
-            if self.win(position | (mod_occupied & self.cols[i_col])):
+            if self.winning_position(
+                position | (mod_occupied & self.cols[i_col])
+            ):
                 break
             position ^= occupied
             occupied |= mod_occupied
