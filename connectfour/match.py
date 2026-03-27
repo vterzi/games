@@ -18,9 +18,7 @@ class ConnectFourMatch(Displayable):
         move_order = []
         for i in range(self._n_cols):
             move_order.append(
-                cdiv(self._n_cols, 2)
-                + cdiv((1 - 2 * (i % 2)) * (i + 1), 2)
-                + 1
+                cdiv(self._n_cols, 2) + cdiv((1 - 2 * (i % 2)) * (i + 1), 2)
             )
         self._move_order = tuple(move_order)
         self._move_col = self._move_order[0]
@@ -39,7 +37,7 @@ class ConnectFourMatch(Displayable):
         turn = len(self._move_str) % 2
         if not self._finished:
             color = self._colors[turn]
-            self._screen[1, self._move_col * 2 - 1] = self._filled_cell(color)
+            self._screen[1, self._move_col * 2 + 1] = self._filled_cell(color)
         color1, color2 = self._colors
         if turn == 1:
             color1, color2 = color2, color1
@@ -55,17 +53,17 @@ class ConnectFourMatch(Displayable):
 
     def handle_key(self, key: str) -> None:
         if key == "\x1b[C" and not self._finished:
-            for i_col in range(self._move_col + 1, self._n_cols + 1):
+            for i_col in range(self._move_col + 1, self._n_cols):
                 if self._game.free_col(self._occupied, i_col):
                     self._move_col = i_col
                     break
         elif key == "\x1b[D" and not self._finished:
-            for i_col in range(self._move_col - 1, 0, -1):
+            for i_col in range(self._move_col - 1, -1, -1):
                 if self._game.free_col(self._occupied, i_col):
                     self._move_col = i_col
                     break
         elif key == "\r" and not self._finished:
-            self._move_str += str(self._move_col)
+            self._move_str += str(self._move_col + 1)
             self._occupied, self._position = self._game.play_moves(
                 self._move_str
             )
