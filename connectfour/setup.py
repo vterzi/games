@@ -3,8 +3,8 @@ from Cython.Build import cythonize
 
 extensions = [
     Extension(
-        "connectfour",
-        ["connectfour.py"],
+        "solver",
+        ["solver.py"],
         extra_compile_args=[
             "-O3",
             "-march=native",

@@ -48,7 +48,7 @@ def bit_count(i: uint64_t) -> cint:
 
 
 @cclass
-class ConnectFour:  # https://github.com/PascalPons/connect4
+class ConnectFourSolver:  # https://github.com/PascalPons/connect4
     n_rows: cint
     n_cols: cint
     bottom_cells: uint64_t[7]  # n_cols
@@ -600,7 +600,7 @@ class ConnectFour:  # https://github.com/PascalPons/connect4
         return occupied, position
 
     @ccall
-    def display(self, occupied: uint64_t, position: uint64_t):
+    def display(self, occupied: uint64_t, position: uint64_t) -> str:
         one: uint64_t
         string: str
         color1: str
@@ -630,4 +630,4 @@ class ConnectFour:  # https://github.com/PascalPons/connect4
                 line += disc
                 cell <<= self.stride
             string = line + "\n" + string
-        print(string[: len(string) - 1])
+        return string
