@@ -199,6 +199,10 @@ class ConnectFour:  # https://github.com/PascalPons/connect4
                             uint8_t, score - self.invalid_score
                         )
 
+    def __init__(self, opening_file: str = "") -> None:
+        if not compiled:
+            self.__cinit__(opening_file)
+
     @cfunc
     @inline
     @exceptval(check=False)  # type: ignore
