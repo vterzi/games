@@ -620,36 +620,3 @@ class ConnectFourSolver:  # https://github.com/PascalPons/connect4
         score_dict = {}
         self.explore_moves(unique_keys, score_dict, "", depth + 1)
         return score_dict
-
-    @ccall
-    def display(self, occupied: uint64_t, position: uint64_t) -> str:
-        one: uint64_t
-        string: str
-        color1: str
-        color2: str
-        i_row: cint
-        _: cint
-        cell: uint64_t
-        line: str
-        color: str
-        disc: str
-
-        one = 1
-        string = ""
-        color1 = "31"
-        color2 = "33"
-        if bit_count(occupied) % 2 == 1:
-            color1, color2 = color2, color1
-        for i_row in range(self.n_rows):
-            cell = one << i_row
-            line = ""
-            for _ in range(self.n_cols):
-                if occupied & cell:
-                    color = color1 if position & cell else color2
-                    disc = f"\x1b[{color}m\u25cf\x1b[0m "  # \u2b24
-                else:
-                    disc = "\u25cb "  # \u25ef
-                line += disc
-                cell <<= self.stride
-            string = line + "\n" + string
-        return string
