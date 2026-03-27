@@ -160,6 +160,14 @@ class ConnectFourSolver:  # https://github.com/PascalPons/connect4
         if not compiled:
             self.__cinit__(opening_file)
 
+    @ccall
+    def size(self) -> tuple[cint, ...]:
+        return self.n_cols, self.n_rows
+
+    @ccall
+    def nil_score(self) -> cint:
+        return self.invalid_score
+
     @cfunc
     @inline
     @exceptval(check=False)  # type: ignore
