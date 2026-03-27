@@ -62,6 +62,15 @@ class ConnectFourMatch(Displayable):
                 if self._game.free_col(self._occupied, i_col):
                     self._move_col = i_col
                     break
+        elif (
+            key in ("1", "2", "3", "4", "5", "6", "7", "8", "9")
+            and not self._finished
+        ):
+            i_col = int(key) - 1
+            if i_col < self._n_cols and self._game.free_col(
+                self._occupied, i_col
+            ):
+                self._move_col = i_col
         elif key == "\r" and not self._finished:
             self._move_str += str(self._move_col + 1)
             self._occupied, self._position = self._game.play_moves(
