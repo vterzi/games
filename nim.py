@@ -12,18 +12,18 @@ Arguments:
 
 if __name__ == "__main__":
     n_args = len(argv)
-    enable_AI = n_args == 4
+    enable_bot = n_args == 4
     if (
         n_args in (3, 4)
         and all(arg.isdigit() and int(arg) > 0 for arg in argv[1:3])
-        and (not enable_AI or argv[3] in ("0", "1"))
+        and (not enable_bot or argv[3] in ("0", "1"))
     ):
         n_rows = int(argv[1])
         move_limit = int(argv[2])
         rows = [2 * i + 1 for i in range(n_rows)]
         width = rows[-1]
         pads = [" " * (n_rows - i - 1) for i in range(n_rows)]
-        if enable_AI:
+        if enable_bot:
             i = int(argv[3])
             players = ("Bot", "Player")
         else:
@@ -41,7 +41,7 @@ if __name__ == "__main__":
                     for row, pad in zip(rows, pads):
                         string = "|" * row + pad
                         print(" " * (width - len(string)) + string + f" {row}")
-                    if enable_AI and i == 0:
+                    if enable_bot and i == 0:
                         move = rows[0]
                         if len(rows) == 1 or (rows[1] - 1) % step != 0:
                             move = move - 1
