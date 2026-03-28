@@ -34,10 +34,14 @@ class ConnectFourMatch(Displayable):
         return f"\x1b[{30 + color}m\u25cf\x1b[0m"  # \u2b24
 
     def display(self) -> None:
+        row_offset = (self._screen.rows - self._n_rows - 1) // 2 + 1
+        col_offset = (self._screen.cols - 2 * self._n_cols) // 2 + 1
         turn = len(self._move_str) % 2
         if not self._finished:
             color = self._colors[turn]
-            self._screen[1, self._move_col * 2 + 1] = self._filled_cell(color)
+            self._screen[row_offset, self._move_col * 2 + col_offset] = (
+                self._filled_cell(color)
+            )
         color1, color2 = self._colors
         if turn == 1:
             color1, color2 = color2, color1
@@ -49,7 +53,9 @@ class ConnectFourMatch(Displayable):
                     disc = self._filled_cell(color)
                 else:
                     disc = self._empty_cell()
-                self._screen[self._n_rows - i_row + 1, i_col * 2 + 1] = disc
+                self._screen[
+                    self._n_rows - i_row + row_offset, i_col * 2 + col_offset
+                ] = disc
 
     def handle_key(self, key: str) -> None:
         if key == "\x1b[C" and not self._finished:
