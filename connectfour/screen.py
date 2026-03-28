@@ -6,6 +6,9 @@ from abc import ABC, abstractmethod
 from sys import platform, stdin
 from shutil import get_terminal_size
 from signal import signal, SIGWINCH
+from threading import Thread, Event
+from queue import Queue
+from time import time, sleep
 from types import FrameType
 
 if platform == "win32":
@@ -34,17 +37,19 @@ else:
     from tty import setraw
     from termios import tcgetattr, tcsetattr, TCSADRAIN
 
+    STDIN_FD = stdin.fileno()
+
     def get_stdin_attrs() -> list:
         """Get the TTY attributes of the standard input."""
-        return tcgetattr(stdin)
+        return tcgetattr(STDIN_FD)
 
     def set_stdin_attrs(attrs: list) -> None:
         """Set the TTY attributes of the standard input."""
-        tcsetattr(stdin, TCSADRAIN, attrs)
+        tcsetattr(STDIN_FD, TCSADRAIN, attrs)
 
     def set_stdin_raw() -> None:
         """Set the mode of the standard input to raw."""
-        setraw(stdin)
+        setraw(STDIN_FD)
 
     def get_key() -> str:
         """Read a keypress."""
@@ -81,8 +86,8 @@ class Interactable(Displayable):
     """Interactable object."""
 
     @abstractmethod
-    def handle_key(self, key: str) -> None:
-        """Handle input."""
+    def handle_event(self, event: tuple[str, ...]) -> None:
+        """Handle event."""
 
 
 class Screen:
@@ -93,27 +98,14 @@ class Screen:
         """Print text."""
         print(text, end="", flush=True)
 
-    def __init__(self) -> None:
+    def __init__(self, fps: float) -> None:
         self._cols = 0
         self._rows = 0
         self._buffer: list[str] = []
         self._objects: list[Displayable] = []
         self._focus: Interactable | None = None
-
-        def resize_handler(signum: int, frame: FrameType | None) -> None:
-            size = get_terminal_size()
-            cols = size.columns
-            rows = size.lines
-            self._cols = cols
-            self._rows = rows
-            self._buffer = [" "] * (cols * rows)
-            self.display()
-
-        self._stdin_attrs = get_stdin_attrs()
-        set_stdin_raw()
-        self._print("\x1b[?1049h\x1b[?25l\x1b[?1003h\x1b[?1006h")
-        resize_handler(int(SIGWINCH), None)
-        signal(SIGWINCH, resize_handler)
+        self._fps = fps
+        self._events: Queue[tuple[str, ...]] = Queue()
 
     @property
     def cols(self) -> int:
@@ -147,18 +139,19 @@ class Screen:
     def add(self, obj: Displayable) -> None:
         """Add a displayable object."""
         self._objects.append(obj)
-        self.display()
 
     def remove(self, obj: Displayable) -> None:
         """Remove a displayable object."""
         self._objects.remove(obj)
-        self.display()
 
     def focus(self, obj: Interactable | None) -> None:
         """Focus a displayable object."""
         if obj in self._objects or obj is None:
             self._focus = obj
-        self.display()
+
+    def event(self, event: tuple[str, ...]) -> None:
+        """Put an event in the event queue."""
+        self._events.put(event)
 
     def clear(self) -> None:
         """Clear the buffer."""
@@ -173,17 +166,46 @@ class Screen:
             obj.display()
         self._print("\x1b[H" + "".join(self._buffer))
 
-    def listen_keys(self) -> None:
-        """Listen for input."""
-        while True:
-            key = get_key()
-            if key == "\x1b\x1b":
-                break
-            if self._focus is not None:
-                self._focus.handle_key(key)
-            self.display()
+    def run(self) -> None:
+        """Run the main loop."""
+        events = self._events
+        stop = Event()
+        spf = 1 / self._fps
 
-    def close(self) -> None:
-        """Close the buffer."""
-        self._print("\x1b[?1049l\x1b[?25h\x1b[?1003l\x1b[?1006l")
-        set_stdin_attrs(self._stdin_attrs)
+        self._stdin_attrs = get_stdin_attrs()
+        set_stdin_raw()
+        self._print("\x1b[?1049h\x1b[?25l\x1b[?1003h\x1b[?1006h")
+
+        def resize_handler(signum: int, frame: FrameType | None) -> None:
+            size = get_terminal_size()
+            cols = size.columns
+            rows = size.lines
+            self._cols = cols
+            self._rows = rows
+            self._buffer = [" "] * (cols * rows)
+
+        resize_handler(int(SIGWINCH), None)
+        signal(SIGWINCH, resize_handler)
+
+        def listen_keys() -> None:
+            while not stop.is_set():
+                key = get_key()
+                events.put(("key", key))
+
+        Thread(target=listen_keys, daemon=True).start()
+
+        try:
+            while not stop.is_set():
+                initial = time()
+                while not events.empty():
+                    event = events.get()
+                    if event == ("key", "\x1b\x1b"):
+                        stop.set()
+                    elif self._focus is not None:
+                        self._focus.handle_event(event)
+                self.display()
+                elapsed = time() - initial
+                sleep(max(0, spf - elapsed))
+        finally:
+            self._print("\x1b[?1049l\x1b[?25h\x1b[?1003l\x1b[?1006l")
+            set_stdin_attrs(self._stdin_attrs)
