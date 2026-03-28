@@ -14,9 +14,9 @@ if __name__ == "__main__":
     n_args = len(argv)
     enable_bot = n_args == 4
     if (
-        n_args in (3, 4)
+        n_args in {3, 4}
         and all(arg.isdigit() and int(arg) > 0 for arg in argv[1:3])
-        and (not enable_bot or argv[3] in ("0", "1"))
+        and (not enable_bot or argv[3] in {"0", "1"})
     ):
         n_rows = int(argv[1])
         move_limit = int(argv[2])
