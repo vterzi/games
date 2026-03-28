@@ -1,4 +1,4 @@
-from .screen import Displayable, Screen
+from .screen import Interactable, Screen
 from .solver import ConnectFourSolver  # type: ignore
 
 
@@ -6,7 +6,7 @@ def cdiv(n: int, d: int) -> int:
     return int(n / d)
 
 
-class ConnectFourMatch(Displayable):
+class ConnectFourMatch(Interactable):
     """Connect Four match."""
 
     def __init__(self, screen: Screen) -> None:

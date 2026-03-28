@@ -76,6 +76,10 @@ class Displayable(ABC):
     def display(self) -> None:
         """Display the object."""
 
+
+class Interactable(Displayable):
+    """Interactable object."""
+
     @abstractmethod
     def handle_key(self, key: str) -> None:
         """Handle input."""
@@ -94,7 +98,7 @@ class Screen:
         self._rows = 0
         self._buffer: list[str] = []
         self._objects: list[Displayable] = []
-        self._focus: Displayable | None = None
+        self._focus: Interactable | None = None
 
         def resize_handler(signum: int, frame: FrameType | None) -> None:
             size = get_terminal_size()
@@ -150,7 +154,7 @@ class Screen:
         self._objects.remove(obj)
         self.display()
 
-    def focus(self, obj: Displayable | None) -> None:
+    def focus(self, obj: Interactable | None) -> None:
         """Focus a displayable object."""
         if obj in self._objects or obj is None:
             self._focus = obj
