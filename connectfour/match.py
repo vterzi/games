@@ -23,6 +23,7 @@ class ConnectFourMatch(Interactable):
         self._move_order = tuple(move_order)
         self._move_col = self._move_order[0]
         self._colors = (1, 3)
+        self._status = ""
         self._finished = False
         super().__init__(screen)
         screen.focus(self)
@@ -34,7 +35,7 @@ class ConnectFourMatch(Interactable):
         return f"\x1b[{30 + color}m\u25cf\x1b[0m"  # \u2b24
 
     def display(self) -> None:
-        row_offset = (self._screen.rows - self._n_rows - 1) // 2 + 1
+        row_offset = (self._screen.rows - self._n_rows + 1) // 2 + 1
         col_offset = (self._screen.cols - 2 * self._n_cols) // 2 + 1
         turn = len(self._move_str) % 2
         if not self._finished:
@@ -56,44 +57,55 @@ class ConnectFourMatch(Interactable):
                 self._screen[
                     self._n_rows - i_row + row_offset, i_col * 2 + col_offset
                 ] = disc
+        for i, char in enumerate(self._status):
+            self._screen[self._n_rows + 2 + row_offset, i + col_offset] = char
 
     def handle_key(self, key: str) -> None:
-        if key == "\x1b[C" and not self._finished:
+        not_finished = not self._finished
+        if key == "\x1b[C" and not_finished:
             for i_col in range(self._move_col + 1, self._n_cols):
                 if self._game.free_col(self._occupied, i_col):
                     self._move_col = i_col
                     break
-        elif key == "\x1b[D" and not self._finished:
+        elif key == "\x1b[D" and not_finished:
             for i_col in range(self._move_col - 1, -1, -1):
                 if self._game.free_col(self._occupied, i_col):
                     self._move_col = i_col
                     break
         elif (
             key in ("1", "2", "3", "4", "5", "6", "7", "8", "9")
-            and not self._finished
+            and not_finished
         ):
             i_col = int(key) - 1
             if i_col < self._n_cols and self._game.free_col(
                 self._occupied, i_col
             ):
                 self._move_col = i_col
-        elif key == "\r" and not self._finished:
+        elif key == "\r" and not_finished:
+            turn = len(self._move_str) % 2
             self._move_str += str(self._move_col + 1)
             self._occupied, self._position = self._game.play_moves(
                 self._move_str
             )
-            self._finished = self._game.winning_position(
+            if self._game.winning_position(
                 self._position ^ self._occupied
-            )
-            for i_col in self._move_order:
-                if self._game.free_col(self._occupied, i_col):
-                    self._move_col = i_col
-                    break
-            else:
+            ):
+                self._status = (
+                    self._filled_cell(self._colors[turn]) + " Wins!"
+                )
                 self._finished = True
+            else:
+                for i_col in self._move_order:
+                    if self._game.free_col(self._occupied, i_col):
+                        self._move_col = i_col
+                        break
+                else:
+                    self._status = "Draw!"
+                    self._finished = True
         elif key in ("\b", "\x7f") and len(self._move_str) > 0:
             self._move_str = self._move_str[:-1]
             self._occupied, self._position = self._game.play_moves(
                 self._move_str
             )
+            self._status = ""
             self._finished = False
