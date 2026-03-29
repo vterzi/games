@@ -12,7 +12,9 @@ def cdiv(n: int, d: int) -> int:
 
 class ConnectFourState:
     def __init__(self) -> None:
-        self._game = ConnectFourSolver("connectfour/opening.txt")
+        path = __file__.split("/")
+        path[-1] = "opening.txt"
+        self._game = ConnectFourSolver("/".join(path))
         self._move_str = ""
         self._occupied = 0
         self._position = 0
