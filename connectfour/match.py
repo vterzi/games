@@ -1,13 +1,10 @@
 from threading import Thread
 from queue import Queue
 from random import choice
+from typing import Generator
 
 from .screen import Interactable, Screen
 from .solver import ConnectFourSolver  # type: ignore
-
-
-def cdiv(n: int, d: int) -> int:
-    return int(n / d)
 
 
 class ConnectFourState:
@@ -15,6 +12,7 @@ class ConnectFourState:
         path = __file__.split("/")
         path[-1] = "opening.txt"
         self._game = ConnectFourSolver("/".join(path))
+        self._n_cols, self._n_rows = self._game.size()
         self._move_str = ""
         self._occupied = 0
         self._position = 0
@@ -22,9 +20,12 @@ class ConnectFourState:
         self.update()
 
     @property
-    def size(self) -> tuple[int, int]:
-        size = self._game.size()
-        return size[0], size[1]
+    def n_cols(self) -> int:
+        return self._n_cols
+
+    @property
+    def n_rows(self) -> int:
+        return self._n_rows
 
     @property
     def nil_score(self) -> int:
@@ -56,6 +57,16 @@ class ConnectFourState:
 
     def free_col(self, i_col: int) -> bool:
         return self._game.free_col(self._occupied, i_col)
+
+    def nearest_cols(self, i_col: int) -> Generator[int, None, None]:
+        yield i_col
+        for i in range(1, self._n_cols):
+            next_i_col = i_col - i
+            if next_i_col >= 0:
+                yield next_i_col
+            next_i_col = i_col + i
+            if next_i_col < self._n_cols:
+                yield next_i_col
 
     def winning_position(self) -> bool:
         return self._game.winning_position(self._position ^ self._occupied)
@@ -108,14 +119,9 @@ class ConnectFourMatch(Interactable):
         self, screen: Screen, bots: tuple[bool, bool] = (False, False)
     ) -> None:
         self._state = ConnectFourState()
-        self._n_cols, self._n_rows = self._state.size
-        move_order = []
-        for i in range(self._n_cols):
-            move_order.append(
-                cdiv(self._n_cols, 2) + cdiv((1 - 2 * (i % 2)) * (i + 1), 2)
-            )
-        self._move_order = tuple(move_order)
-        self._move_col = self._move_order[0]
+        self._n_cols = self._state.n_cols
+        self._n_rows = self._state.n_rows
+        self._move_col = (self._n_cols + 1) // 2 - 1
         self._colors = (1, 3)
         self._status = ""
         self._finished = False
@@ -197,7 +203,9 @@ class ConnectFourMatch(Interactable):
         elif event[0] == "state":
             string = event[1]
             if string[:-1] == self._state.move_str:
-                move_str = string[-1]
+                char = string[-1]
+                self._move_col = int(char) - 1
+                move_str = char
 
         if len(move_str) > 0:
             self._state.push(move_str)
@@ -208,7 +216,7 @@ class ConnectFourMatch(Interactable):
                 )
                 self._finished = True
             else:
-                for i_col in self._move_order:
+                for i_col in self._state.nearest_cols(self._move_col):
                     if self._state.free_col(i_col):
                         self._move_col = i_col
                         break
