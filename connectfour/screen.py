@@ -174,7 +174,7 @@ class Screen:
 
         self._stdin_attrs = get_stdin_attrs()
         set_stdin_raw()
-        self._print("\x1b[?1049h\x1b[?25l\x1b[?1003h\x1b[?1006h")
+        self._print("\x1b[?1049h\x1b[?25l\x1b[?1000h\x1b[?1003h\x1b[?1006h")
 
         def resize_handler(signum: int, frame: FrameType | None) -> None:
             size = get_terminal_size()
@@ -207,5 +207,7 @@ class Screen:
                 elapsed = time() - initial
                 sleep(max(0, spf - elapsed))
         finally:
-            self._print("\x1b[?1049l\x1b[?25h\x1b[?1003l\x1b[?1006l")
+            self._print(
+                "\x1b[?1049l\x1b[?25h\x1b[?1000l\x1b[?1003l\x1b[?1006l"
+            )
             set_stdin_attrs(self._stdin_attrs)

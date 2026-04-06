@@ -1,6 +1,7 @@
 from threading import Thread
 from queue import Queue
 from random import choice
+from re import fullmatch
 from typing import Generator
 
 from .screen import Interactable, Screen
@@ -178,6 +179,7 @@ class ConnectFourMatch(Interactable):
         move_str = ""
 
         if event[0] == "key" and bots[state.turn] is None:
+            n_rows = state.n_rows
             n_cols = state.n_cols
             not_finished = not self._finished
             key = event[1]
@@ -198,6 +200,26 @@ class ConnectFourMatch(Interactable):
                 i_col = int(key) - 1
                 if i_col < n_cols and state.free_col(i_col):
                     self._move_col = i_col
+            elif (
+                key.startswith("\x1b[<0;")
+                and key.endswith("m")
+                and not_finished
+            ):
+                key = key[5:-1]
+                match = fullmatch(r"(\d+);(\d+)", key)
+                if match is not None:
+                    i_col = int(match.group(1))
+                    i_row = int(match.group(2))
+                    screen = self._screen
+                    row_offset = (screen.rows - n_rows + 1) // 2 + 1
+                    col_offset = (screen.cols - 2 * n_cols) // 2 + 1
+                    i_row -= row_offset
+                    i_col -= col_offset
+                    i_col //= 2
+                    if 0 <= i_row <= n_rows and 0 <= i_col < n_cols:
+                        if state.free_col(i_col):
+                            self._move_col = i_col
+                            move_str = str(i_col + 1)
             elif key == "\r" and not_finished:
                 move_str = str(self._move_col + 1)
             elif key in {"\b", "\x7f"}:
