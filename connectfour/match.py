@@ -147,15 +147,14 @@ class ConnectFourMatch(Interactable):
         super().__init__(screen)
         screen.focus(self)
 
-    def _colored_filled_cell(self, color: int) -> str:
-        return f"\x1b[{30 + color}m{self._filled_cell}\x1b[0m"
+    def _colored_filled_cell(self, turn: int) -> str:
+        return f"\x1b[{30 + self._colors[turn]}m{self._filled_cell}\x1b[0m"
 
     def display(self) -> None:
         state = self._state
         n_rows = state.n_rows
         n_cols = state.n_cols
         screen = self._screen
-        colors = self._colors
         height = self._height
         width = self._width
         row_offset = (screen.rows - height) // 2 + 1
@@ -165,23 +164,21 @@ class ConnectFourMatch(Interactable):
         col_offset_ = col_offset + (width - len(self._status)) // 2
         for i, char in enumerate(self._status):
             if char == self._filled_cell:
-                char = self._colored_filled_cell(colors[state.prev_turn])
+                char = self._colored_filled_cell(state.prev_turn)
             screen[row_offset, col_offset_ + i] = char
         row_offset += 1
         if not self._finished:
             screen[row_offset, col_offset + self._move_col * 2] = (
-                self._colored_filled_cell(colors[state.turn])
+                self._colored_filled_cell(state.turn)
             )
         row_offset += n_rows
-        color1, color2 = colors
-        if state.turn == 1:
-            color1, color2 = color2, color1
         for i_row in range(n_rows):
             for i_col in range(n_cols):
                 cell = 1 << (i_col * (n_rows + 1) + i_row)
                 if state.occupied & cell:
-                    color = color1 if state.position & cell else color2
-                    disc = self._colored_filled_cell(color)
+                    disc = self._colored_filled_cell(
+                        int(int(bool(state.position & cell)) == state.turn)
+                    )
                 else:
                     disc = self._empty_cell
                 screen[row_offset - i_row, col_offset + i_col * 2] = disc
