@@ -118,11 +118,21 @@ class ConnectFourMatch(Interactable):
     """Connect Four match."""
 
     def __init__(
-        self, screen: Screen, bots: tuple[bool, bool] = (False, False)
+        self,
+        screen: Screen,
+        cell_width: int,
+        bots: tuple[bool, bool] = (False, False),
     ) -> None:
         self._state = ConnectFourState()
         self._n_cols = self._state.n_cols
         self._n_rows = self._state.n_rows
+        self._empty_cell = "\u25cb"  # \u25ef
+        self._filled_cell = "\u25cf"  # \u2b24
+        self._undo = "\u21a9"  # \u21b6 \u238c
+        self._exit = "\u2715"  # \xd7 \u2716
+        self._cell_width = cell_width
+        self._height = self._n_rows + 2
+        self._width = 2 * (self._n_cols - 1) + cell_width
         self._move_col = (self._n_cols + 1) // 2 - 1
         self._colors = (1, 3)
         self._status = ""
@@ -137,11 +147,8 @@ class ConnectFourMatch(Interactable):
         super().__init__(screen)
         screen.focus(self)
 
-    def _empty_cell(self) -> str:
-        return "\u25cb"  # \u25ef
-
-    def _filled_cell(self, color: int) -> str:
-        return f"\x1b[{30 + color}m\u25cf\x1b[0m"  # \u2b24
+    def _colored_filled_cell(self, color: int) -> str:
+        return f"\x1b[{30 + color}m{self._filled_cell}\x1b[0m"
 
     def display(self) -> None:
         state = self._state
@@ -149,13 +156,23 @@ class ConnectFourMatch(Interactable):
         n_cols = state.n_cols
         screen = self._screen
         colors = self._colors
-        row_offset = (screen.rows - n_rows + 1) // 2 + 1
-        col_offset = (screen.cols - 2 * n_cols) // 2 + 1
+        height = self._height
+        width = self._width
+        row_offset = (screen.rows - height) // 2 + 1
+        col_offset = (screen.cols - width) // 2 + 1
+        screen[row_offset, col_offset] = self._undo
+        screen[row_offset, col_offset + width - self._cell_width] = self._exit
+        col_offset_ = col_offset + (width - len(self._status)) // 2
+        for i, char in enumerate(self._status):
+            if char == self._filled_cell:
+                char = self._colored_filled_cell(colors[state.prev_turn])
+            screen[row_offset, col_offset_ + i] = char
+        row_offset += 1
         if not self._finished:
-            color = colors[state.turn]
-            screen[row_offset, self._move_col * 2 + col_offset] = (
-                self._filled_cell(color)
+            screen[row_offset, col_offset + self._move_col * 2] = (
+                self._colored_filled_cell(colors[state.turn])
             )
+        row_offset += n_rows
         color1, color2 = colors
         if state.turn == 1:
             color1, color2 = color2, color1
@@ -164,14 +181,10 @@ class ConnectFourMatch(Interactable):
                 cell = 1 << (i_col * (n_rows + 1) + i_row)
                 if state.occupied & cell:
                     color = color1 if state.position & cell else color2
-                    disc = self._filled_cell(color)
+                    disc = self._colored_filled_cell(color)
                 else:
-                    disc = self._empty_cell()
-                screen[n_rows - i_row + row_offset, i_col * 2 + col_offset] = (
-                    disc
-                )
-        for i, char in enumerate(self._status):
-            screen[n_rows + 2 + row_offset, i + col_offset] = char
+                    disc = self._empty_cell
+                screen[row_offset - i_row, col_offset + i_col * 2] = disc
 
     def handle_event(self, event: tuple[str, ...]) -> None:
         state = self._state
@@ -200,26 +213,35 @@ class ConnectFourMatch(Interactable):
                 i_col = int(key) - 1
                 if i_col < n_cols and state.free_col(i_col):
                     self._move_col = i_col
-            elif (
-                key.startswith("\x1b[<0;")
-                and key.endswith("m")
-                and not_finished
-            ):
+            elif key.startswith("\x1b[<0;") and key.endswith("m"):
                 key = key[5:-1]
                 match = fullmatch(r"(\d+);(\d+)", key)
                 if match is not None:
                     i_col = int(match.group(1))
                     i_row = int(match.group(2))
                     screen = self._screen
-                    row_offset = (screen.rows - n_rows + 1) // 2 + 1
-                    col_offset = (screen.cols - 2 * n_cols) // 2 + 1
+                    height = self._height
+                    width = self._width
+                    cell_width = self._cell_width
+                    row_offset = (screen.rows - height) // 2 + 1
+                    col_offset = (screen.cols - width) // 2 + 1
                     i_row -= row_offset
                     i_col -= col_offset
-                    i_col //= 2
-                    if 0 <= i_row <= n_rows and 0 <= i_col < n_cols:
-                        if state.free_col(i_col):
-                            self._move_col = i_col
-                            move_str = str(i_col + 1)
+                    if i_row == 0:
+                        if 0 <= i_col <= cell_width - 1:
+                            self._screen.event(("key", "\b"))
+                        elif width - cell_width <= i_col <= width - 1:
+                            self._screen.event(("key", "\x1b\x1b"))
+                    elif not_finished:
+                        i_row -= 2
+                        if cell_width == 1 and i_col % 2 == 0:
+                            i_col = -1
+                        else:
+                            i_col //= 2
+                        if 0 <= i_row <= n_rows and 0 <= i_col < n_cols:
+                            if state.free_col(i_col):
+                                self._move_col = i_col
+                                move_str = str(i_col + 1)
             elif key == "\r" and not_finished:
                 move_str = str(self._move_col + 1)
             elif key in {"\b", "\x7f"}:
@@ -241,9 +263,7 @@ class ConnectFourMatch(Interactable):
         if len(move_str) > 0:
             state.push(move_str)
             if state.winning_position():
-                self._status = (
-                    self._filled_cell(self._colors[state.prev_turn]) + " Wins!"
-                )
+                self._status = self._filled_cell + " Wins!"
                 self._finished = True
             else:
                 for i_col in state.nearest_cols(self._move_col):
