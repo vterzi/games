@@ -250,7 +250,7 @@ class ConnectFourSolver:  # https://github.com/PascalPons/connect4
 
     @cfunc
     @inline
-    def init_opening(self, opening_file: str) -> None:
+    def init_opening(self, opening_file: str):
         header: str
         line: str
         tokens: list[str]
@@ -557,7 +557,7 @@ class ConnectFourSolver:  # https://github.com/PascalPons/connect4
         score_dict: dict[str, cint],
         move_str: str,
         depth: cint,
-    ) -> None:
+    ):
         occupied: uint64_t
         position: uint64_t
         unique_key: uint64_t
