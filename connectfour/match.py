@@ -11,7 +11,7 @@ from .solver import ConnectFourSolver  # type: ignore
 class ConnectFourState:
     def __init__(self) -> None:
         path = __file__.split("/")
-        path[-1] = "opening.txt"
+        path[-1] = "7x6.txt"
         self._game = ConnectFourSolver("/".join(path))
         self._n_cols, self._n_rows = self._game.size()
         self._move_str = ""
