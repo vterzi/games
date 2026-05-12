@@ -129,7 +129,7 @@ class ConnectFourMatch(Interactable):
         self._empty_cell = "\u25cb"  # \u25ef
         self._filled_cell = "\u25cf"  # \u2b24
         self._undo = "\u21a9"  # \u21b6 \u238c
-        self._exit = "\u2715"  # \xd7 \u2716
+        self._exit = "\u2715" if cell_width == 2 else "\xd7"  # \u2716
         self._cell_width = cell_width
         self._height = self._n_rows + 2
         self._width = 2 * (self._n_cols - 1) + cell_width
@@ -141,9 +141,7 @@ class ConnectFourMatch(Interactable):
             ConnectFourBot(self._state, screen) if bots[0] else None,
             ConnectFourBot(self._state, screen) if bots[1] else None,
         )
-        bot = self._bots[self._state.turn]
-        if bot is not None:
-            bot.queue()
+        self._enable_bot()
         super().__init__(screen)
         screen.focus(self)
 
@@ -183,33 +181,65 @@ class ConnectFourMatch(Interactable):
                     disc = self._empty_cell
                 screen[row_offset - i_row, col_offset + i_col * 2] = disc
 
+    def _enable_bot(self) -> None:
+        bot = self._bots[self._state.turn]
+        if bot is not None:
+            bot.queue()
+
+    def _change_move_col(self, i_col: int) -> bool:
+        if self._state.free_col(i_col):
+            self._move_col = i_col
+            return True
+        return False
+
+    def _make_move(self) -> None:
+        state = self._state
+        state.push(str(self._move_col + 1))
+        if state.winning_position():
+            self._status = self._filled_cell + " Wins!"
+            self._finished = True
+        else:
+            for i_col in state.nearest_cols(self._move_col):
+                if self._change_move_col(i_col):
+                    break
+            else:
+                self._status = "Draw!"
+                self._finished = True
+        if not self._finished:
+            self._enable_bot()
+
+    def _undo_move(self) -> None:
+        state = self._state
+        state.pop()
+        if self._bots[state.turn] is not None:
+            state.pop()
+            self._enable_bot()
+        self._status = ""
+        self._finished = False
+
     def handle_event(self, event: tuple[str, ...]) -> None:
         state = self._state
-        bots = self._bots
-        move_str = ""
+        player_move = not self._finished and self._bots[state.turn] is None
 
-        if event[0] == "key" and bots[state.turn] is None:
+        if event[0] == "key":
             n_rows = state.n_rows
             n_cols = state.n_cols
-            not_finished = not self._finished
             key = event[1]
-            if key == "\x1b[C" and not_finished:
+            if key == "\x1b[C" and player_move:
                 for i_col in range(self._move_col + 1, n_cols):
-                    if state.free_col(i_col):
-                        self._move_col = i_col
+                    if self._change_move_col(i_col):
                         break
-            elif key == "\x1b[D" and not_finished:
+            elif key == "\x1b[D" and player_move:
                 for i_col in range(self._move_col - 1, -1, -1):
-                    if state.free_col(i_col):
-                        self._move_col = i_col
+                    if self._change_move_col(i_col):
                         break
             elif (
                 key in {"1", "2", "3", "4", "5", "6", "7", "8", "9"}
-                and not_finished
+                and player_move
             ):
                 i_col = int(key) - 1
-                if i_col < n_cols and state.free_col(i_col):
-                    self._move_col = i_col
+                if i_col < n_cols:
+                    self._change_move_col(i_col)
             elif key.startswith("\x1b[<0;") and key.endswith("m"):
                 key = key[5:-1]
                 match = fullmatch(r"(\d+);(\d+)", key)
@@ -220,57 +250,28 @@ class ConnectFourMatch(Interactable):
                     height = self._height
                     width = self._width
                     cell_width = self._cell_width
-                    row_offset = (screen.rows - height) // 2 + 1
-                    col_offset = (screen.cols - width) // 2 + 1
-                    i_row -= row_offset
-                    i_col -= col_offset
+                    i_row -= (screen.rows - height) // 2 + 1
+                    i_col -= (screen.cols - width) // 2 + 1
                     if i_row == 0:
                         if 0 <= i_col <= cell_width - 1:
-                            self._screen.event(("key", "\b"))
+                            self._undo_move()
                         elif width - cell_width <= i_col <= width - 1:
-                            self._screen.event(("key", "\x1b\x1b"))
-                    elif not_finished:
+                            screen.event(("key", "\x1b\x1b"))
+                    elif player_move:
                         i_row -= 2
-                        if cell_width == 1 and i_col % 2 == 0:
+                        if cell_width == 1 and i_col % 2 == 1:
                             i_col = -1
                         else:
                             i_col //= 2
                         if 0 <= i_row <= n_rows and 0 <= i_col < n_cols:
-                            if state.free_col(i_col):
-                                self._move_col = i_col
-                                move_str = str(i_col + 1)
-            elif key == "\r" and not_finished:
-                move_str = str(self._move_col + 1)
+                            if self._change_move_col(i_col):
+                                self._make_move()
+            elif key == "\r" and player_move:
+                self._make_move()
             elif key in {"\b", "\x7f"}:
-                state.pop()
-                if bots[state.turn] is not None:
-                    state.pop()
-                    bot = bots[state.turn]
-                    if bot is not None:
-                        bot.queue()
-                self._status = ""
-                self._finished = False
+                self._undo_move()
         elif event[0] == "state":
-            string = event[1]
-            if string[:-1] == state.move_str:
-                char = string[-1]
-                self._move_col = int(char) - 1
-                move_str = char
-
-        if len(move_str) > 0:
-            state.push(move_str)
-            if state.winning_position():
-                self._status = self._filled_cell + " Wins!"
-                self._finished = True
-            else:
-                for i_col in state.nearest_cols(self._move_col):
-                    if state.free_col(i_col):
-                        self._move_col = i_col
-                        break
-                else:
-                    self._status = "Draw!"
-                    self._finished = True
-            if not self._finished:
-                bot = bots[state.turn]
-                if bot is not None:
-                    bot.queue()
+            move_str = event[1]
+            if move_str[:-1] == state.move_str:
+                self._change_move_col(int(move_str[-1]) - 1)
+                self._make_move()
