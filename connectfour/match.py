@@ -114,6 +114,29 @@ class ConnectFourBot:
         self._queue.put(None)
 
 
+class ConnectFourAnalyzer:
+    """Connect Four analyzer."""
+
+    def __init__(self, state: ConnectFourState, screen: Screen) -> None:
+        self._state = state
+        self._screen = screen
+        self._queue: Queue[None] = Queue()
+
+        def analyze() -> None:
+            while True:
+                self._queue.get()
+                move_str = self._state.move_str
+                scores = self._state.analyze()
+                self._screen.event(
+                    ("analysis", move_str, " ".join(map(str, scores)))
+                )
+
+        Thread(target=analyze, daemon=True).start()
+
+    def queue(self) -> None:
+        self._queue.put(None)
+
+
 class ConnectFourMatch(Interactable):
     """Connect Four match."""
 
@@ -122,7 +145,9 @@ class ConnectFourMatch(Interactable):
         screen: Screen,
         cell_width: int,
         bots: tuple[bool, bool] = (False, False),
+        analyze: bool = False,
     ) -> None:
+        self._cell_width = cell_width
         self._state = ConnectFourState()
         self._n_cols = self._state.n_cols
         self._n_rows = self._state.n_rows
@@ -130,16 +155,19 @@ class ConnectFourMatch(Interactable):
         self._filled_cell = "\u25cf"  # \u2b24
         self._undo = "\u21a9"  # \u21b6 \u238c
         self._exit = "\u2715" if cell_width == 2 else "\xd7"  # \u2716
-        self._cell_width = cell_width
-        self._height = self._n_rows + 2
+        self._height = self._n_rows + 3
         self._width = 2 * (self._n_cols - 1) + cell_width
         self._move_col = (self._n_cols + 1) // 2 - 1
         self._colors = (1, 3)
-        self._status = ""
         self._finished = False
+        self._status = ""
+        self._scores: tuple[int, ...] = ()
         self._bots = (
             ConnectFourBot(self._state, screen) if bots[0] else None,
             ConnectFourBot(self._state, screen) if bots[1] else None,
+        )
+        self._analyzer = (
+            ConnectFourAnalyzer(self._state, screen) if analyze else None
         )
         self._enable_bot()
         super().__init__(screen)
@@ -180,11 +208,30 @@ class ConnectFourMatch(Interactable):
                 else:
                     disc = self._empty_cell
                 screen[row_offset - i_row, col_offset + i_col * 2] = disc
+        row_offset += 1
+        for i, score in enumerate(self._scores):
+            if score < 0:
+                color = 1
+                score = -score
+            elif score > 0:
+                color = 2
+            else:
+                color = 0
+            if score < 10:
+                char = str(score)
+            else:
+                char = chr(ord("A") + score - 10)
+            if color > 0:
+                char = f"\x1b[{30 + color}m{char}\x1b[0m"
+            screen[row_offset, col_offset + i * 2] = char
 
     def _enable_bot(self) -> None:
         bot = self._bots[self._state.turn]
+        analyzer = self._analyzer
         if bot is not None:
             bot.queue()
+        elif analyzer is not None:
+            analyzer.queue()
 
     def _change_move_col(self, i_col: int) -> bool:
         if self._state.free_col(i_col):
@@ -196,15 +243,16 @@ class ConnectFourMatch(Interactable):
         state = self._state
         state.push(str(self._move_col + 1))
         if state.winning_position():
-            self._status = self._filled_cell + " Wins!"
             self._finished = True
+            self._status = self._filled_cell + " Wins!"
         else:
             for i_col in state.nearest_cols(self._move_col):
                 if self._change_move_col(i_col):
                     break
             else:
-                self._status = "Draw!"
                 self._finished = True
+                self._status = "Draw!"
+        self._scores = ()
         if not self._finished:
             self._enable_bot()
 
@@ -213,9 +261,10 @@ class ConnectFourMatch(Interactable):
         state.pop()
         if self._bots[state.turn] is not None:
             state.pop()
-            self._enable_bot()
-        self._status = ""
         self._finished = False
+        self._status = ""
+        self._scores = ()
+        self._enable_bot()
 
     def handle_event(self, event: tuple[str, ...]) -> None:
         state = self._state
@@ -275,3 +324,7 @@ class ConnectFourMatch(Interactable):
             if move_str[:-1] == state.move_str:
                 self._change_move_col(int(move_str[-1]) - 1)
                 self._make_move()
+        elif event[0] == "analysis":
+            move_str = event[1]
+            if move_str == state.move_str:
+                self._scores = tuple(map(int, event[2].split()))
