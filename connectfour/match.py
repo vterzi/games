@@ -263,7 +263,7 @@ class ConnectFourMatch(Interactable):
                             i_col = -1
                         else:
                             i_col //= 2
-                        if 0 <= i_row <= n_rows and 0 <= i_col < n_cols:
+                        if 0 <= i_row < n_rows and 0 <= i_col < n_cols:
                             if self._change_move_col(i_col):
                                 self._make_move()
             elif key == "\r" and player_move:
