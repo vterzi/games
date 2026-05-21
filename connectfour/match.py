@@ -210,19 +210,22 @@ class ConnectFourMatch(Interactable):
                 screen[row_offset - i_row, col_offset + i_col * 2] = disc
         row_offset += 1
         for i, score in enumerate(self._scores):
-            if score < 0:
-                color = 1
-                score = -score
-            elif score > 0:
-                color = 2
+            if score != state.nil_score:
+                if score < 0:
+                    color = 1
+                    score = -score
+                elif score > 0:
+                    color = 2
+                else:
+                    color = 0
+                if score < 10:
+                    char = str(score)
+                else:
+                    char = chr(ord("A") + score - 10)
+                if color > 0:
+                    char = f"\x1b[{30 + color}m{char}\x1b[0m"
             else:
-                color = 0
-            if score < 10:
-                char = str(score)
-            else:
-                char = chr(ord("A") + score - 10)
-            if color > 0:
-                char = f"\x1b[{30 + color}m{char}\x1b[0m"
+                char = " "
             screen[row_offset, col_offset + i * 2] = char
 
     def _enable_bot(self) -> None:
